@@ -151,10 +151,7 @@
     <div class="spacer"></div>
     <select class="who" id="adminSel" title="选择管理员身份：普通管理员只看自己负责的联队，超管看全部"></select>
     <button class="btn ghost small" id="btnAdmins" title="维护管理员名单与负责联队（超管可见）">⚙ 管理员</button>
-    <button class="btn ghost small" id="btnTemplate">⬇ 名单模板</button>
-    <button class="btn ghost small" id="btnImportTeams">📥 导入名单</button>
     <button class="btn" id="btnExportDaily">⬇ 导出当日汇总 CSV</button>
-    <input type="file" id="fileTeams" accept=".csv,.txt,.xlsx,.xls" hidden>
   </div>
 </header>
 
@@ -182,16 +179,14 @@
 
   <div class="card">
     <div class="toolbar">
-      <button class="tbtn primary" id="btnAddTeam">＋ 新增联队</button>
+      <button class="tbtn primary" id="btnAddTeam" title="新增联队：手动建空队，或直接导入排表/名单文件（xlsx/csv）自动建队">＋ 新增联队/导入名单</button>
       <button class="tbtn" id="btnTeamMgr" style="display:none" title="查看/删除联队、修改名单内人员（超管专属）">🧾 联队名单管理</button>
       <button class="tbtn" id="btnRegOpen" style="display:none" title="给花名册人员登记人脸（识别点名用，超管专属）">🙂 人脸登记</button>
       <button class="tbtn" id="btnClearDay" style="color:var(--bad)">清空当日回传</button>
       <button class="tbtn primary" id="btnSubmit" style="display:none" title="把名下已填数据打包成回传文件，发给超级管理员">📤 回传数据</button>
       <button class="tbtn" id="btnInbox" style="display:none" title="接收管理员发来的回传文件并合并">📥 接收回传</button>
       <input type="file" id="fileSubmit" accept=".json,.mtreport,application/json" hidden>
-      <button class="tbtn" id="btnRosterTpl" title="下载花名册模板（xlsx：每联队一个 sheet，sheet 名=联队）">🧾 花名册模板</button>
-      <button class="tbtn" id="btnRosterImport" title="导入花名册（支持 xlsx 多 sheet / csv，超管专属）">📥 导入花名册</button>
-      <input type="file" id="fileRoster" accept=".csv,.txt,.xlsx,.xls" hidden>
+      <input type="file" id="fileAdd" accept=".csv,.txt,.xlsx,.xls" hidden>
       <span class="submit-state no" id="mySubmitState" style="display:none"></span>
       <span class="legend" style="margin-left:auto">
         <span>🟢 <b>已回传</b></span><span>🟡 部分</span><span>⚪ 待回传</span>
@@ -390,6 +385,32 @@
   </div>
 </div>
 
+<!-- 新增联队/导入名单 弹窗 -->
+<div class="mask" id="maskAdd">
+  <div class="modal" style="max-width:540px">
+    <h3>＋ 新增联队 / 导入名单 <span class="badge super">超管专属</span></h3>
+    <div style="font-size:12.5px;color:var(--sub);margin-bottom:10px">两种方式：
+      <b>手动</b>建一个空联队（稍后用「名单管理」加成员或直接导入）；
+      <b>导入文件</b>（xlsx/csv）：一个排一个 sheet 的学生表 → 自动建联队并带成员；含"联队编号"列的名单表 → 新增/更新联队。</div>
+    <div style="border:1px dashed var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px">① 手动建空联队</div>
+      <div class="mrow">
+        <div class="frm"><label>联队编号（可留空自动）</label><input type="text" id="addId" placeholder="如 一排 / L13"></div>
+        <div class="frm"><label>联队名称</label><input type="text" id="addName" placeholder="如 一排"></div>
+      </div>
+      <button class="btn" id="addManual">创建空联队</button>
+    </div>
+    <div style="border:1px dashed var(--line);border-radius:10px;padding:10px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px">② 导入文件自动建队</div>
+      <button class="btn" id="addFileBtn">📥 选择 排表/名单 文件</button>
+      <div style="margin-top:8px;font-size:12.5px;color:var(--sub)">参考模板：
+        <a style="cursor:pointer;color:var(--green-d);text-decoration:underline" id="addTplList">名单模板（联队编号,名称,应到）</a>
+        ｜<a style="cursor:pointer;color:var(--green-d);text-decoration:underline" id="addTplRoster">排表模板（每排一个 sheet）</a></div>
+    </div>
+    <div class="modal-btns"><button class="btn plain" id="addClose">关闭</button></div>
+  </div>
+</div>
+
 <!-- 联队名单管理弹窗 -->
 <div class="mask" id="maskTeams">
   <div class="modal modal-xl" style="max-width:640px">
@@ -415,7 +436,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.11（联队名单管理） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.11.1（新增/导入合一） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -661,7 +682,7 @@ function refreshRoleUI(){
   $("btnInbox").style.display=sup?"":"none";
   const card=$("statusCard");card.style.display=sup?"":"none";
   // 配置类操作（名单/花名册/清空/新增联队/恢复示例）仅超管可见 —— 普通管理员只做填报+实时回传
-  ["btnTemplate","btnImportTeams","btnRosterTpl","btnRosterImport","btnAddTeam","btnClearDay","btnReset","btnRegOpen","btnTeamMgr"].forEach(id=>{
+  ["btnAddTeam","btnClearDay","btnReset","btnRegOpen","btnTeamMgr"].forEach(id=>{
     const el=$(id);if(el)el.style.display=sup?"":"none";
   });
   if(sup)renderAdminStatus();
@@ -874,8 +895,14 @@ function importTeams(file){
       out.push({id,name,expected:Number.isFinite(exp)?exp:0});
     }
     if(!out.length){alert("解析后没有有效联队行");return;}
-    if(confirm("将用导入名单替换当前名单（"+loadTeams().length+" 个）？\n（导入 "+out.length+" 个，日报/签入/管理员数据不受影响）")){
-      saveTeams(out);render();pushCfg();alert("✅ 名单导入成功："+out.length+" 个联队");
+    const ts=loadTeams();let added=0,upd=0;
+    out.forEach(o=>{
+      const ex=ts.find(x=>x.id===o.id||x.name===o.name);
+      if(ex){if(ex.name!==o.name)ex.name=o.name;if(Number.isFinite(o.expected)&&o.expected>0)ex.expected=o.expected;upd++;}
+      else{ts.push(o);added++;}
+    });
+    if(confirm("将新增 "+added+" 个联队、更新 "+upd+" 个（按编号/名称匹配，原有数据保留）。\n继续？")){
+      saveTeams(ts);render();pushCfg();alert("✅ 名单处理完成：新增 "+added+" / 更新 "+upd+" 个联队");
     }
   }).catch(e=>alert("读取失败："+e.message));
 }
@@ -1513,19 +1540,35 @@ $("adminList").addEventListener("click",e=>{
 $("btnSubmit").onclick=doSubmit;
 $("btnInbox").onclick=()=>$("fileSubmit").click();
 $("fileSubmit").onchange=e=>{if(e.target.files[0])doInbox(e.target.files[0]);e.target.value="";};
-$("btnTemplate").onclick=exportTemplate;
 $("btnExportDaily").onclick=exportDaily;
 $("btnTransExport").onclick=exportTrans;
-$("btnImportTeams").onclick=()=>$("fileTeams").click();
-$("fileTeams").onchange=e=>{if(e.target.files[0])importTeams(e.target.files[0]);e.target.value="";};
+/* ---- 新增联队 / 导入名单（面板合一） ---- */
+function openAddTeam(){
+  if(!isSuper())return;
+  $("addId").value="";$("addName").value="";
+  $("maskAdd").classList.add("show");
+  setTimeout(()=>$("addName").focus(),60);
+}
+function addManualCreate(){
+  const id=$("addId").value.trim(),name=$("addName").value.trim();
+  if(!name){alert("请输入联队名称");return;}
+  const teams=loadTeams();
+  if(teams.some(x=>x.id===id||(id&&x.name===name))){alert("已存在同编号/名称的联队，请到「联队名单管理」里处理。");return;}
+  teams.push({id:id||name,name,expected:0});
+  saveTeams(teams);render();pushCfg();
+  $("maskAdd").classList.remove("show");
+  alert("✅ 已创建联队「"+name+"」。可点行内「✏点名/名单管理」添加成员，或继续导入排表文件。");
+}
+$("btnAddTeam").onclick=openAddTeam;
+$("addClose").onclick=()=>$("maskAdd").classList.remove("show");
+$("maskAdd").addEventListener("click",e=>{if(e.target===$("maskAdd"))$("maskAdd").classList.remove("show");});
+$("addManual").onclick=addManualCreate;
+$("addFileBtn").onclick=()=>$("fileAdd").click();
+$("fileAdd").onchange=e=>{if(e.target.files[0])importTeams(e.target.files[0]);e.target.value="";};
+$("addTplList").onclick=exportTemplate;
+$("addTplRoster").onclick=()=>{rosterTpl();};
 $("btnReset").onclick=()=>{if(confirm("恢复全部示例数据？（名单+管理员，日报/签入保留）")){seedAll();if(!loadAdmins().find(x=>x.name===curAdminName()))localStorage.setItem(LS_ADMINCUR,"超级管理员");renderAdminSel();render();pushCfg();}};
-$("btnAddTeam").onclick=()=>{
-  const id=prompt("联队编号（如 L13）：");if(id==null)return;
-  const nm=prompt("联队名称（如 第13联队）：");if(nm==null)return;
-  const exp=prompt("应到人数：","50");
-  const t=loadTeams();t.push({id:id.trim()||"T"+Date.now(),name:nm.trim()||id.trim(),expected:Number.isFinite(num(exp))?num(exp):0});
-  saveTeams(t);render();pushCfg();
-};
+
 $("btnClearDay").onclick=async()=>{
   if(!isSuper())return;
   if(!confirm("清空 "+curDate+" 的当日全部数据（日报+签入，含云端所有管理员）？\n此操作不可恢复！"))return;
@@ -1567,9 +1610,7 @@ document.addEventListener("click",e=>{
   }
 });
 
-$("btnRosterTpl").onclick=rosterTpl;
-$("btnRosterImport").onclick=()=>$("fileRoster").click();
-$("fileRoster").onchange=e=>{if(e.target.files[0])importRosterFile(e.target.files[0]);e.target.value="";};
+
 $("rollCancel").onclick=closeRoll;
 $("rollSave").onclick=rollSave;
 $("maskRoll").addEventListener("click",e=>{if(e.target===$("maskRoll"))closeRoll();});
