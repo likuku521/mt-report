@@ -343,7 +343,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.9.1（xlsx导入+权限收紧+清理修复） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.9.2（排表识别导入） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -773,7 +773,16 @@ function pickHeader(rows,keys){
 }
 function importTeams(file){
   readWorkbook(file).then(wb=>{
-    const rows=(wb.sheets[0]||{rows:[]}).rows;
+    const sh0=wb.sheets[0]||{rows:[]};
+    const head=(sh0.rows[0]||[]).map(h=>String(h||"").trim());
+    const hasName=head.some(h=>["姓名","名字","学生姓名","name"].includes(h));
+    const hasTeamCol=head.some(h=>["联队编号","编号","联队名称","名称","应到","应到人数"].includes(h));
+    if(hasName&&!hasTeamCol){
+      // 排表型（每 sheet=一个排/联队，如真实模板）→ 按 sheet 自动添加联队+导入其名单(花名册)
+      importRosterFile(file);
+      return;
+    }
+    const rows=sh0.rows;
     if(rows.length<2){alert("文件里没有数据行（需要表头 + 至少一行联队）");return;}
     const iId=pickHeader(rows,["联队编号","编号","联队","队","id"]);
     const iName=pickHeader(rows,["联队名称","名称","联队名","name"]);
