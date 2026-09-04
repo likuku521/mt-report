@@ -76,6 +76,10 @@
   .submit-state{font-size:12px;font-weight:600;padding:6px 2px}
   .submit-state.ok{color:var(--green-d)}
   .submit-state.no{color:var(--warn)}
+  .cloud{font-size:12px;font-weight:700;border-radius:999px;padding:3px 12px;cursor:pointer;user-select:none;display:inline-block}
+  .cloud.ok{background:#DCFCE7;color:#166534}
+  .cloud.off{background:#FEE2E2;color:#991B1B}
+  .cloud.busy{background:#FEF3C7;color:#92400E}
   .empty{text-align:center;color:var(--sub);padding:30px 0;font-size:13px}
   .tip{font-size:12px;color:var(--sub);line-height:1.7;margin-top:10px;background:#F9FAF9;border:1px dashed var(--line);border-radius:8px;padding:10px 12px}
   .trans-list{list-style:none}
@@ -162,6 +166,7 @@
     <button class="btn small" id="backToday" style="display:none">回到今天</button>
     <span class="today-chip" id="todayMark" style="display:none">今天</span>
     <div class="spacer"></div>
+    <span class="cloud busy" id="cloudState" title="云端自动同步状态 · 点此手动同步">☁ 连接中…</span>
     <span style="font-size:12px;color:var(--sub)">可见 <b id="teamCount">0</b> / 名单 <b id="teamTotal">0</b> 联队</span>
   </div>
 </div>
@@ -219,7 +224,7 @@
     </div>
     <div class="tip" id="tipBox">
       💡 <b>填报</b>：点「✏ 点名」按花名册逐人核对 → 自动写入日报；也可直接点「实到/病假/…」的 <b>–</b> 手填数字。缺勤自动算。<br>
-      📤 <b>回传</b>：普通管理员填完点「回传数据」→ 生成回传文件 → 发给超级管理员；超管点「接收回传」导入合并（云端自动同步后续开通）。<br>
+      📤 <b>回传</b>：管理员填完点「回传数据」→ <b>自动上传云端</b>，超级管理员刷新即见；网络不通时自动降级为生成文件发送。<br>
       👤 <b>身份</b>：普通管理员只看/填报自己负责的联队；超级管理员看全部、负责收齐统计。<br>
       ⇄ <b>跨队签入</b>：队员去其他联队训练 → 该行「⇄ 签入」或下方「＋ 登记签入」。<br>
       ⚠️ 数据只存在<b>当前设备浏览器</b>，请养成「填完就回传、文件即备份」的习惯。
@@ -337,7 +342,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.6（花名册点名+人脸计数） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.7（线上回传 ☁） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -356,7 +361,10 @@
 const LS_TEAMS="mtr_teams_v1",LS_REPORTS="mtr_reports_v1",LS_TRANS="mtr_transfers_v1",
       LS_ADMINS="mtr_admins_v1",LS_ADMINCUR="mtr_admin_cur",
       LS_SUBMIT="mtr_submitlog_v1",LS_INBOX="mtr_inbox_v1",
-      LS_ROSTER="mtr_rosters_v1",LS_ROLL="mtr_rollcall_v1";
+      LS_ROSTER="mtr_rosters_v1",LS_ROLL="mtr_rollcall_v1",
+      LS_CLOUDADM="mtr_cloud_admins_v1";
+const CLOUD_API="https://mtapi.lijiahao521.top";   // 云端同步接口（Cloudflare Worker）
+const CLOUD_PASS="mt-sync-2026";                   // 与 Worker 侧一致的接口口令（防误写）
 const SUBMIT_FMT="mt-report-submit",SUBMIT_VER=1;
 const MANUAL=["actual","sick","personal","injured"];
 const FLABEL={actual:"实到",sick:"病假",personal:"事假",injured:"伤病见习"};
@@ -400,6 +408,9 @@ function rosterOf(teamId){return loadRoster()[teamId]||[];}
 function loadRoll(){try{return JSON.parse(localStorage.getItem(LS_ROLL))||{};}catch(e){return {};}}
 function saveRoll(r){localStorage.setItem(LS_ROLL,JSON.stringify(r));}
 function dayRoll(date){return loadRoll()[date]||{};}
+function loadCloudAdm(){try{return JSON.parse(localStorage.getItem(LS_CLOUDADM))||{};}catch(e){return {};}}
+function saveCloudAdm(c){localStorage.setItem(LS_CLOUDADM,JSON.stringify(c));}
+function dayCloudAdm(date){return loadCloudAdm()[date]||{};}
 
 const TEAM_SEED=[["L01","第1联队",52],["L02","第2联队",50],["L03","第3联队",55],["L04","第4联队",48],
   ["L05","第5联队",53],["L06","第6联队",50],["L07","第7联队",56],["L08","第8联队",49],
@@ -577,27 +588,37 @@ function refreshRoleUI(){
 function renderAdminStatus(){
   const admins=loadAdmins().filter(a=>a.role!=="super");
   const inbox=dayInbox(curDate);
+  const ca=dayCloudAdm(curDate);   // {name:{ts,teamCount,transCount}}
   const known=new Set(admins.map(a=>a.name));
   const list=$("statusList");list.innerHTML="";
-  const doneN=inbox.filter(r=>known.has(r.admin)).length;
+  // 合并来源：云端快照 + 本机文件接收
+  const recOf=name=>{
+    const c=ca[name];const f=inbox.find(x=>x.admin===name);
+    if(c)return{when:c.ts,note:"☁ 云端 · 含 "+c.teamCount+" 队/"+(c.transCount||0)+" 签入",done:true};
+    if(f)return{when:f.receivedAt,note:"📥 文件 · 含 "+f.teamCount+" 队/"+(f.transCount||0)+" 签入",done:true};
+    return null;
+  };
+  const doneN=admins.filter(a=>recOf(a.name)).length;
   $("statusSummary").textContent=admins.length?("已回传 "+doneN+"/"+admins.length):"";
-  if(!admins.length){$("statusEmpty").style.display="";$("statusEmpty").textContent="还没有普通管理员账号，去「⚙ 管理员」添加后再接收回传。";return;}
-  $("statusEmpty").style.display=inbox.length?"none":"";
+  if(!admins.length){$("statusEmpty").style.display="";$("statusEmpty").textContent="还没有普通管理员账号，去「⚙ 管理员」添加。";return;}
   const addRow=(name,badge,meta)=>{
     const li=document.createElement("li");
     li.innerHTML="<b>"+esc(name)+"</b>"+badge+(meta?"<span class='meta'>"+meta+"</span>":"");
     list.appendChild(li);
   };
   admins.forEach(a=>{
-    const rec=inbox.find(x=>x.admin===a.name);
+    const r=recOf(a.name);
     const scope=a.teams&&a.teams.length?a.teams.map(teamName).join("、"):"（未分配）";
     addRow(a.name,
-      rec?"<span class='chip done'>✅ "+esc(rec.receivedAt)+"</span>":"<span class='chip wait'>⏳ 未回传</span>",
-      "负责："+esc(scope)+(rec?" · 含 "+rec.teamCount+" 队/"+rec.transCount+" 签入":""));
+      r?("<span class='chip done'>✅ "+esc(r.when)+"</span>"):"<span class='chip wait'>⏳ 未回传</span>",
+      "负责："+esc(scope)+(r?" · "+r.note:""));
   });
-  inbox.filter(r=>!known.has(r.admin)).forEach(rec=>{
-    addRow(rec.admin+"（未配置的管理员）","<span class='chip part'>📥 "+esc(rec.receivedAt)+"</span>","含 "+rec.teamCount+" 队/"+rec.transCount+" 签入");
+  const extra=new Set([...Object.keys(ca),...inbox.map(x=>x.admin)].filter(n=>!known.has(n)));
+  extra.forEach(n=>{
+    const r=recOf(n);
+    addRow(n+"（未配置的管理员）","<span class='chip part'>"+esc(r?r.when:"")+"</span>",r?r.note:"");
   });
+  $("statusEmpty").style.display=(Object.keys(ca).length||inbox.length)?"none":"";
 }
 function renderTransList(){
   const ts=dayTrans(curDate);
@@ -784,6 +805,58 @@ function exportTemplate(){
   download("军训联队名单模板.csv",["联队编号,联队名称,应到人数","L01,第1联队,52","L02,第2联队,50","L03,第3联队,55"].join("\r\n"));
 }
 
+/* ---------- 云端同步（Cloudflare Worker+KV） ---------- */
+let cloudBusy=false,cloudOk=false,cloudLast="";
+function setCloudUI(txt,cls){
+  const el=$("cloudState");if(!el)return;
+  el.textContent=txt;el.className="cloud "+cls;
+}
+async function cloudCall(path,qs,opts){
+  try{
+    const res=await fetch(CLOUD_API+path+(qs||""),{
+      method:(opts&&opts.method)||"GET",
+      headers:{"X-Pass":CLOUD_PASS,...((opts&&opts.body)?{"Content-Type":"application/json"}:{})},
+      body:(opts&&opts.body)?JSON.stringify(opts.body):undefined});
+    if(!res.ok)return null;
+    return await res.json();
+  }catch(e){return null;}
+}
+/* 拉取某日云端全量 → 合并本地（日报同队取新、签入按来源替换）；admins 状态存快照 */
+async function syncFromCloud(date,manual){
+  if(cloudBusy)return false;
+  cloudBusy=true;
+  if(manual)setCloudUI("☁ 同步中…","busy");
+  const st=await cloudCall("/state","?date="+date);
+  if(!st||st.ok===false){cloudOk=false;cloudBusy=false;setCloudUI("☁ 离线·点此重试","off");return false;}
+  cloudOk=true;cloudLast=st.ts||nowFmt();
+  const all=loadReports();const day=all[date]||{};
+  Object.entries(st.teams||{}).forEach(([tid,rec])=>{
+    const cur=day[tid];
+    if(!cur||String(rec.ts||"")>=String(cur.ts||""))day[tid]={...rec};
+  });
+  if(Object.keys(day).length)all[date]=day;else delete all[date];
+  saveReports(all);
+  const trAll=loadTrans();const dayTr=(trAll[date]||[]);
+  const srcSet=new Set();
+  Object.values(st.trans||{}).forEach(t=>{if(t._by)srcSet.add(t._by);});
+  if(srcSet.size){
+    const keep=dayTr.filter(x=>!(x._src&&srcSet.has(x._src)));
+    Object.values(st.trans||{}).forEach(t=>keep.push({...t,_src:t._by}));
+    trAll[date]=keep;
+  }
+  saveTrans(trAll);
+  const ca=loadCloudAdm();ca[date]=st.admins||{};saveCloudAdm(ca);
+  cloudBusy=false;
+  const t=(cloudLast&&cloudLast.includes("T"))?cloudLast.replace("T"," ").slice(5,16):cloudLast;
+  setCloudUI("☁ 已同步 "+(cloudLast?nowFmt().slice(11,16):""),"ok");
+  return true;
+}
+/* 推送名下数据到云端（回传=写云端），成功返回 true */
+async function pushCloud(date,admin,kind,payload){
+  const r=await cloudCall("/put","",{method:"POST",body:{date,admin,kind,...payload,ts:nowFmt()}});
+  return !!(r&&r.ok);
+}
+
 /* ---------- 花名册：模板/导入 ---------- */
 function rosterTpl(){
   download("花名册模板.csv",["联队编号,姓名,学号(可选)","L01,王小明,2026010101","L01,李大力,2026010102","L02,赵一诺,2026020101","L02,钱多多,2026020102"].join("\r\n"));
@@ -939,17 +1012,36 @@ function downloadJson(filename,obj){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;
   document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},200);
 }
-function doSubmit(){
+async function doSubmit(){
   const admin=curAdminName();if(!admin||isSuper())return;
   const p=collectMyPayload();
   const filled=Object.keys(p.teams).length,total=visibleTeams().length,tCnt=Object.keys(p.trans).length;
-  if(!filled&&!tCnt){alert("名下还没有填报数据，先填「实到/病假/事假/伤病见习」再回传。");return;}
-  if(total>filled&&!confirm("名下 "+total+" 个联队中只填报了 "+filled+" 个，未填的队不会进入回传包（允许部分回传）。\n确定生成回传文件？"))return;
-  const payload={fmt:SUBMIT_FMT,ver:SUBMIT_VER,date:p.date,admin:admin,exportedAt:nowFmt(),teams:p.teams,trans:p.trans};
-  downloadJson("回传_"+p.date+"_"+admin+".mtreport.json",payload);
-  const sl=loadSubmit();const day=sl[p.date]||{};day[admin]=nowFmt();sl[p.date]=day;saveSubmit(sl);
+  if(!filled&&!tCnt){alert("名下还没有填报数据，先填「实到/病假/事假/伤病见习」或点名后再回传。");return;}
+  if(total>filled&&!confirm("名下 "+total+" 个联队中只填报了 "+filled+" 个，未填的队不会回传（允许部分回传）。\n确定回传？"))return;
+  const ts=nowFmt();
+  // 云端优先：日报 + 签入两笔写入（并发写，故障任一 → 降级文件）
+  const push=async()=>{
+    const r1=await pushCloud(p.date,admin,"report",{teams:p.teams});
+    const r2=await pushCloud(p.date,admin,"transfer",{trans:p.trans});
+    return r1&&r2;
+  };
+  const okCloud=await push();
+  const sl=loadSubmit();const day=sl[p.date]||{};
+  if(okCloud){
+    day[admin]={ts,mode:"cloud"};
+    setCloudUI("☁ 已同步 "+ts.slice(11,16),"ok");
+    await syncFromCloud(p.date,false);
+    render();
+    alert("✅ 已回传线上（"+filled+" 个联队"+(tCnt?"、"+tCnt+" 条签入":"")+"）——超级管理员刷新即可看到。");
+  }else{
+    // 离线降级：生成回传文件
+    const payload={fmt:SUBMIT_FMT,ver:SUBMIT_VER,date:p.date,admin,exportedAt:ts,teams:p.teams,trans:p.trans};
+    downloadJson("回传_"+p.date+"_"+admin+".mtreport.json",payload);
+    day[admin]={ts,mode:"file"};
+    alert("⚠ 线上回传失败（网络不通？），已改为生成回传文件：\n"+filled+" 个联队"+(tCnt?"、"+tCnt+" 条签入":"")+"。\n请把文件发给超级管理员导入。");
+  }
+  sl[p.date]=day;saveSubmit(sl);
   updateSubmitUI();
-  alert("✅ 回传文件已生成（"+filled+" 个联队"+(tCnt?"、"+tCnt+" 条签入":"")+"）。\n请把该文件发给超级管理员。");
 }
 function updateSubmitUI(){
   const s=$("mySubmitState");
@@ -957,8 +1049,14 @@ function updateSubmitUI(){
   s.style.display=isSuper()?"none":"";
   if(isSuper())return;
   const rec=(loadSubmit()[curDate]||{})[curAdminName()];
-  if(rec){s.className="submit-state ok";s.textContent="✅ 上次回传 "+rec+"（请将文件发给超管）";}
-  else{s.className="submit-state no";s.textContent="⏳ 今日未回传";}
+  let txt="⏳ 今日未回传",cls="no";
+  if(rec){
+    if(typeof rec==="string"){txt="✅ 已生成回传文件 "+rec+"（请发给超管）";cls="ok";}
+    else if(rec.mode==="cloud"){txt="✅ 已回传线上 "+rec.ts+"（超管可见）";cls="ok";}
+    else{txt="✅ 已生成回传文件 "+rec.ts+"（请发给超管导入）";cls="ok";}
+  }
+  s.className="submit-state "+cls;
+  s.textContent=txt;
 }
 function readSubmitFile(file){
   return new Promise((res,rej)=>{
@@ -1040,7 +1138,7 @@ function doAddTrans(){
   if(!from||!to||from===to){alert("请选择两个不同的联队");return;}
   if(!Number.isFinite(cnt)||cnt<1){alert("人数须为 ≥1 的整数");return;}
   const all=loadTrans();const day=all[curDate]||[];
-  day.push({id:uid(),from,to,count:String(cnt),note:$("fNote").value.trim(),reporter:curAdminName()||"",ts:nowFmt()});
+  day.push({id:uid(),from,to,count:String(cnt),note:$("fNote").value.trim(),reporter:curAdminName()||"",ts:nowFmt(),_src:curAdminName()||""});
   all[curDate]=day;saveTrans(all);
   $("mask").classList.remove("show");
   render();
@@ -1127,9 +1225,11 @@ function delAdmin(name){
 }
 
 /* ---------- 事件 ---------- */
-$("prevDay").onclick=()=>{curDate=shiftDate(curDate,-1);render();};
-$("nextDay").onclick=()=>{curDate=shiftDate(curDate,1);render();};
-$("backToday").onclick=()=>{curDate=todayStr();render();};
+function gotoDay(s){curDate=s;render();syncFromCloud(curDate,false).then(ok=>{if(ok)render();});}
+$("prevDay").onclick=()=>gotoDay(shiftDate(curDate,-1));
+$("nextDay").onclick=()=>gotoDay(shiftDate(curDate,1));
+$("backToday").onclick=()=>gotoDay(todayStr());
+$("cloudState").onclick=()=>{syncFromCloud(curDate,true).then(ok=>{render();setCloudUI(ok?"☁ 已同步 "+nowFmt().slice(11,16):"☁ 离线·点此重试",ok?"ok":"off");});};
 $("adminSel").onchange=e=>{localStorage.setItem(LS_ADMINCUR,e.target.value);renderAdminSel();render();};
 $("btnAdmins").onclick=()=>openAdminEditor(null);
 $("aCancel").onclick=()=>{$("maskAdmin").classList.remove("show");aEditName=null;};
@@ -1365,6 +1465,7 @@ if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
 }
 renderAdminSel();
 render();
+syncFromCloud(curDate,false).then(ok=>{if(ok)render();});   // 首屏拉取云端并刷新
 </script>
 </body>
 </html>
