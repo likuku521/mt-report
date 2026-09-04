@@ -224,7 +224,8 @@
     </div>
     <div class="tip" id="tipBox">
       💡 <b>填报</b>：点「✏ 点名」按花名册逐人核对 → 自动写入日报；也可直接点「实到/病假/…」的 <b>–</b> 手填数字。缺勤自动算。<br>
-      📤 <b>回传</b>：管理员填完点「回传数据」→ <b>自动上传云端</b>，超级管理员刷新即见；网络不通时自动降级为生成文件发送。<br>
+      ☁ <b>实时互通</b>：所有修改<b>自动上云</b>，页面每 10 秒自动拉取——手机/电脑同时打开，一边改另一边自动更新。<br>
+      📤 <b>回传确认</b>：数据已实时同步，点「回传数据」是向超管<b>确认"今日已完成"</b>并补齐漏传；网络不通时自动降级为文件发送。<br>
       👤 <b>身份</b>：普通管理员只看/填报自己负责的联队；超级管理员看全部、负责收齐统计。<br>
       ⇄ <b>跨队签入</b>：队员去其他联队训练 → 该行「⇄ 签入」或下方「＋ 登记签入」。<br>
       ⚠️ 数据只存在<b>当前设备浏览器</b>，请养成「填完就回传、文件即备份」的习惯。
@@ -342,7 +343,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.7（线上回传 ☁） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.8（实时互通 ☁） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -681,6 +682,7 @@ function openEditor(span){
     if(Object.keys(cur).length)day[teamId]=cur;else delete day[teamId];
     all[curDate]=day;saveReports(all);
     paintRow(teamId);
+    autoPush("report");   // 修改即上云
   }
   function cancel(){if(!done){done=true;render();}}
   inp.addEventListener("blur",commit);
@@ -857,6 +859,28 @@ async function pushCloud(date,admin,kind,payload){
   const r=await cloudCall("/put","",{method:"POST",body:{date,admin,kind,...payload,ts:nowFmt()}});
   return !!(r&&r.ok);
 }
+/* ---- 修改即自动上云（无感后台推送） ---- */
+function myTeamsObj(){const o={};visibleTeams().forEach(t=>{const rec=dayReport(curDate)[t.id];if(rec&&Object.keys(rec).length)o[t.id]=rec;});return o;}
+function myTransObj(){const o={};const ts=dayTrans(curDate);const set=new Set(visibleTeams().map(t=>t.id));ts.forEach(x=>{if(set.has(x.from))o[x.id]=x;});return o;}
+function autoPush(kinds){
+  if(isSuper()||!curAdminName())return;
+  const date=curDate,admin=curAdminName();
+  if(kinds!=="transfer")pushCloud(date,admin,"report",{teams:myTeamsObj()});
+  if(kinds!=="report")pushCloud(date,admin,"transfer",{trans:myTransObj()});
+}
+/* ---- 轮询：准实时拉取他人改动，离线时作为恢复探测 ---- */
+let pollTimer=null;
+const POLL_MS=parseInt(new URLSearchParams(location.search).get("poll"))||10000;
+function startCloudPolling(){
+  stopCloudPolling();
+  pollTimer=setInterval(()=>{
+    if(cloudBusy)return;
+    syncFromCloud(curDate,false).then(ok=>{
+      if(ok&&!document.querySelector("#tbody input"))render();   // 不打断正在编辑的格子
+    });
+  },POLL_MS);
+}
+function stopCloudPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
 
 /* ---------- 花名册：模板/导入 ---------- */
 function rosterTpl(){
@@ -994,6 +1018,7 @@ function rollSave(){
   saveTrans(transAll);
   closeRoll();
   render();
+  autoPush("both");   // 点名结果自动上云
   alert("✅ 已按点名写入当日日报：实到 "+actual+"（到场 "+c.ok+" + 去他队 "+c.away+"）· 病假 "+c.sick+" · 事假 "+c.personal+" · 伤病 "+c.injured+" · 缺勤 "+c.absent+(c.away?"\n已自动生成签入单。":""));
 }
 
@@ -1143,6 +1168,7 @@ function doAddTrans(){
   all[curDate]=day;saveTrans(all);
   $("mask").classList.remove("show");
   render();
+  autoPush("transfer");
 }
 function undoTrans(id){
   const all=loadTrans();const day=all[curDate]||[];
@@ -1150,6 +1176,7 @@ function undoTrans(id){
   if(!canSeeTeam(t.from)&&!canSeeTeam(t.to))return;
   if(!confirm("撤销签入单："+teamName(t.from)+" → "+teamName(t.to)+" ×"+num(t.count)+" ？"))return;
   all[curDate]=day.filter(x=>x.id!==id);saveTrans(all);render();
+  autoPush("transfer");
 }
 
 /* ---------- 管理员管理 ---------- */
@@ -1467,6 +1494,7 @@ if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
 renderAdminSel();
 render();
 syncFromCloud(curDate,false).then(ok=>{if(ok)render();});   // 首屏拉取云端并刷新
+startCloudPolling();   // 10s 轮询：手机/电脑两端改动自动互通
 </script>
 </body>
 </html>
