@@ -343,7 +343,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.8.1（双域名容灾 ☁） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.9（管理员/名单云端同步） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -698,7 +698,7 @@ function editExpected(teamId){
   if(rosterOf(teamId).length){alert("该联队已有花名册，「应到」=名单人数，请通过「导入花名册」调整名单。");return;}
   const v=prompt("修改 "+t.name+" 的应到人数：",expectedOf(teamId)||"");
   if(v==null)return;
-  const n=parseInt(v,10);if(Number.isFinite(n)&&n>=0){t.expected=n;saveTeams(loadTeams().map(x=>x.id===teamId?t:x));paintRow(teamId);}
+  const n=parseInt(v,10);if(Number.isFinite(n)&&n>=0){t.expected=n;saveTeams(loadTeams().map(x=>x.id===teamId?t:x));paintRow(teamId);pushCfg();}
 }
 
 /* ---------- CSV ---------- */
@@ -747,7 +747,7 @@ function importTeams(file){
     }
     if(!out.length){alert("解析后没有有效联队行");return;}
     if(confirm("将用导入名单替换当前名单（"+loadTeams().length+" 个）？\n（导入 "+out.length+" 个，日报/签入/管理员数据不受影响）")){
-      saveTeams(out);render();alert("✅ 导入成功："+out.length+" 个联队");
+      saveTeams(out);render();pushCfg();alert("✅ 导入成功："+out.length+" 个联队");
     }
   }).catch(e=>alert("读取文件失败："+e.message));
 }
@@ -891,6 +891,35 @@ function startCloudPolling(){
   },POLL_MS);
 }
 function stopCloudPolling(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+/* ---- 基础配置同步（管理员/联队/花名册）：超管改配置→推云端，各设备≤60s拉到 ---- */
+const LS_CFGV="mtr_cfg_v";
+let cfgBusy=false,cfgTimer=null;
+function cfgV(){return localStorage.getItem(LS_CFGV)||"";}
+async function syncCfg(){
+  if(cfgBusy)return;cfgBusy=true;
+  try{
+    const r=await cloudCall("/cfg","?v="+cfgV());
+    if(!r||!r.ok||r.same)return;
+    if(r.admins){
+      const oldCur=curAdminName();
+      saveTeams(r.teams||[]);saveRoster(r.rosters||{});saveAdmins(r.admins||[]);
+      localStorage.setItem(LS_CFGV,String(r.v));
+      if(!loadAdmins().some(a=>a.name===oldCur)){      // 当前身份被删 → 切回超管
+        const s=loadAdmins().find(x=>x.role==="super")||loadAdmins()[0];
+        if(s)localStorage.setItem(LS_ADMINCUR,s.name);
+      }
+      renderAdminSel();render();
+      if($("maskAdmin").classList.contains("show"))renderAdminPanel();
+    }
+  }finally{cfgBusy=false;}
+}
+function pushCfg(){                                   // 超管配置改动后调用
+  if(!isSuper()||cfgBusy)return;
+  cloudCall("/cfg","",{method:"POST",body:{teams:loadTeams(),rosters:loadRoster(),admins:loadAdmins()}}).then(r=>{
+    if(r&&r.ok)localStorage.setItem(LS_CFGV,String(r.v));
+  });
+}
+function startCfgPolling(){if(cfgTimer)return;const ms=parseInt(new URLSearchParams(location.search).get("cfgsec"))||60000;cfgTimer=setInterval(syncCfg,ms);}
 
 /* ---------- 花名册：模板/导入 ---------- */
 function rosterTpl(){
@@ -919,7 +948,7 @@ function importRosterFile(file){
     const affected=Object.keys(out).length;
     if(!confirm("将写入 "+affected+" 个联队花名册、共 "+line+" 人。\n"+(skipped?"跳过 "+skipped+" 行无姓名/无联队行。\n":"")+"已存在名单的联队会被替换，「应到」自动等于名单人数。\n继续？"))return;
     const existing=loadRoster();Object.assign(existing,out);saveRoster(existing);
-    render();alert("✅ 花名册导入成功："+line+" 人 / "+affected+" 队");
+    render();pushCfg();alert("✅ 花名册导入成功："+line+" 人 / "+affected+" 队");
   }).catch(e=>alert("读取失败："+e.message));
 }
 
@@ -1248,6 +1277,7 @@ function saveAdminEditor(){
   renderAdminSel();renderAdminPanel();
   if(curAdminName()===""&&admins.length)localStorage.setItem(LS_ADMINCUR,admins[0].name);
   render();
+  pushCfg();
 }
 function delAdmin(name){
   const admins=loadAdmins();
@@ -1260,6 +1290,7 @@ function delAdmin(name){
     localStorage.setItem(LS_ADMINCUR,s?s.name:"");
   }
   renderAdminSel();renderAdminPanel();render();
+  pushCfg();
 }
 
 /* ---------- 事件 ---------- */
@@ -1286,13 +1317,13 @@ $("btnExportDaily").onclick=exportDaily;
 $("btnTransExport").onclick=exportTrans;
 $("btnImportTeams").onclick=()=>$("fileTeams").click();
 $("fileTeams").onchange=e=>{if(e.target.files[0])importTeams(e.target.files[0]);e.target.value="";};
-$("btnReset").onclick=()=>{if(confirm("恢复全部示例数据？（名单+管理员，日报/签入保留）")){seedAll();if(!loadAdmins().find(x=>x.name===curAdminName()))localStorage.setItem(LS_ADMINCUR,"超级管理员");renderAdminSel();render();}};
+$("btnReset").onclick=()=>{if(confirm("恢复全部示例数据？（名单+管理员，日报/签入保留）")){seedAll();if(!loadAdmins().find(x=>x.name===curAdminName()))localStorage.setItem(LS_ADMINCUR,"超级管理员");renderAdminSel();render();pushCfg();}};
 $("btnAddTeam").onclick=()=>{
   const id=prompt("联队编号（如 L13）：");if(id==null)return;
   const nm=prompt("联队名称（如 第13联队）：");if(nm==null)return;
   const exp=prompt("应到人数：","50");
   const t=loadTeams();t.push({id:id.trim()||"T"+Date.now(),name:nm.trim()||id.trim(),expected:Number.isFinite(num(exp))?num(exp):0});
-  saveTeams(t);render();
+  saveTeams(t);render();pushCfg();
 };
 $("btnClearDay").onclick=()=>{
   if(!confirm("清空 "+curDate+" 的日报回传数据？（签入登记保留）"))return;
@@ -1504,7 +1535,9 @@ if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
 renderAdminSel();
 render();
 syncFromCloud(curDate,false).then(ok=>{if(ok)render();});   // 首屏拉取云端并刷新
+syncCfg();                                                    // 首屏拉取基础配置（管理员/名单/花名册）
 startCloudPolling();   // 10s 轮询：手机/电脑两端改动自动互通
+startCfgPolling();     // 60s 轮询：管理员/名单/花名册等配置同步
 </script>
 </body>
 </html>
