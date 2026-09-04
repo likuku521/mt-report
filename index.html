@@ -16,7 +16,7 @@
   body{font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
   header{background:linear-gradient(135deg,var(--green-d),var(--green));color:#fff;padding:14px 16px 10px}
   .wrap{max-width:1020px;margin:0 auto}
-  .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .logo{font-size:20px}
   h1{font-size:19px;font-weight:700;letter-spacing:.5px}
   .sub{font-size:12px;opacity:.85;margin-top:2px}
@@ -26,8 +26,10 @@
   .btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
   .btn.ghost:hover{background:rgba(255,255,255,.12)}
   .btn.small{padding:5px 10px;font-size:12px}
-  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-  select.who{background:#fff;color:var(--green-d);border:none;border-radius:8px;padding:7px 8px;font-size:13px;font-weight:600;max-width:150px;cursor:pointer}
+  select.who{background:#fff;color:var(--green-d);border:none;border-radius:8px;padding:7px 8px;font-size:13px;font-weight:600;max-width:170px;cursor:pointer}
+  .badge{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:700;margin-left:6px}
+  .badge.super{background:#FEF3C7;color:#92400E}
+  .badge.admin{background:#E0F2FE;color:#075985}
   .datebar{background:var(--card);border-bottom:1px solid var(--line);padding:8px 0}
   .datebar .wrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .arrow{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:16px;color:var(--green-d);display:flex;align-items:center;justify-content:center}
@@ -58,7 +60,6 @@
   .val{display:inline-block;min-width:36px;padding:3px 5px;border-radius:6px;cursor:pointer;border:1px solid transparent}
   .val:hover{background:var(--green-l);border-color:#C8E6C9}
   .val.empty{color:var(--grey)}
-  .val.over{color:var(--bad);font-weight:700;background:#FEF2F2}
   .val.auto{color:var(--sub);cursor:help;background:transparent;border-color:transparent}
   .val.auto:hover{background:transparent;border-color:transparent}
   .val.auto.neg{color:var(--bad);font-weight:700}
@@ -82,17 +83,23 @@
   .note-x{color:var(--sub);font-size:12px}
   .mask{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
   .mask.show{display:flex}
-  .modal{background:#fff;border-radius:14px;width:100%;max-width:380px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
-  .modal h3{font-size:16px;margin-bottom:14px}
+  .modal{background:#fff;border-radius:14px;width:100%;max-width:400px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.25);max-height:86vh;overflow:auto}
+  .modal h3{font-size:16px;margin-bottom:14px;display:flex;align-items:center;gap:8px}
   .frm{margin-bottom:12px}
   .frm label{display:block;font-size:12.5px;color:var(--sub);margin-bottom:4px}
   .frm select,.frm input{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;background:#fff;color:var(--txt)}
   .frm input:focus,.frm select:focus{outline:none;border-color:var(--green)}
   .mrow{display:flex;gap:10px}
   .mrow .frm{flex:1}
-  .modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+  .modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
   .modal-btns .btn{padding:7px 16px}
   .btn.plain{background:#F3F4F6;color:var(--txt)}
+  .chk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;max-height:170px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px}
+  .chk-grid label{display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+  .admin-item{display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px dashed #EEF1EE;font-size:13.5px;flex-wrap:wrap}
+  .admin-item:last-child{border-bottom:none}
+  .admin-item .sp{margin-left:auto;display:flex;gap:6px}
+  .hint2{font-size:12px;color:var(--sub);margin:8px 0 4px}
   footer{color:var(--sub);font-size:12px;text-align:center;padding:16px 0 30px}
   footer a{color:var(--grey);cursor:pointer;text-decoration:underline}
   .tbl-scroll{overflow-x:auto}
@@ -108,10 +115,11 @@
     <span class="logo">📋</span>
     <div>
       <h1>军训联队数据回传</h1>
-      <div class="sub">各联队每日统计回传总部 · 数据存储于本机浏览器，导出文件即备份</div>
+      <div class="sub">各联队每日统计回传总部 · 超级管理员收齐汇总 · 数据存于本机浏览器，导出即备份</div>
     </div>
     <div class="spacer"></div>
-    <select class="who" id="whoSel" title="选择当前填报人（团队留痕）"></select>
+    <select class="who" id="adminSel" title="选择管理员身份：普通管理员只看自己负责的联队，超管看全部"></select>
+    <button class="btn ghost small" id="btnAdmins" title="维护管理员名单与负责联队（超管可见）">⚙ 管理员</button>
     <button class="btn ghost small" id="btnTemplate">⬇ 名单模板</button>
     <button class="btn ghost small" id="btnImportTeams">📥 导入名单</button>
     <button class="btn" id="btnExportDaily">⬇ 导出当日汇总 CSV</button>
@@ -127,7 +135,7 @@
     <button class="btn small" id="backToday" style="display:none">回到今天</button>
     <span class="today-chip" id="todayMark" style="display:none">今天</span>
     <div class="spacer"></div>
-    <span style="font-size:12px;color:var(--sub)">名单 <b id="teamCount">0</b> 个联队</span>
+    <span style="font-size:12px;color:var(--sub)">可见 <b id="teamCount">0</b> / 名单 <b id="teamTotal">0</b> 联队</span>
   </div>
 </div>
 
@@ -171,9 +179,13 @@
     <div class="empty" id="emptyBox" style="display:none">
       还没有名单。<br>点击「⬇ 名单模板」下载模板 → 填好联队 → 点「📥 导入名单」；<br>或点击「＋ 新增联队」逐条添加。
     </div>
+    <div class="empty" id="noScopeBox" style="display:none">
+      当前管理员名下没有分配联队。<br>请联系超级管理员在「⚙ 管理员」里给你分配。
+    </div>
     <div class="tip" id="tipBox">
-      💡 <b>填报</b>：点「实到 / 病假 / 事假 / 伤病见习」的 <b>–</b> 直接输入数字，回车或点别处保存。缺勤自动算，不用填。<br>
-      ⇄ <b>跨队签入</b>：队员去其他联队训练 → 点该行「⇄ 签入」登记，或下方卡片「＋ 登记签入」；系统自动汇总迁出/迁入并进报表。<br>
+      💡 <b>填报</b>：点「实到 / 病假 / 事假 / 伤病见习」的 <b>–</b> 直接输入数字，回车或点别处保存。缺勤自动算。<br>
+      👤 <b>身份</b>：普通管理员只看到并填报自己负责的联队；超级管理员可看全部、做汇总统计。<br>
+      ⇄ <b>跨队签入</b>：队员去其他联队训练 → 该行「⇄ 签入」或下方「＋ 登记签入」。<br>
       ⚠️ 数据只存在<b>当前设备浏览器</b>，填完请「⬇ 导出当日汇总 CSV」留档。
     </div>
   </div>
@@ -187,14 +199,15 @@
     </div>
     <ul class="trans-list" id="transList"></ul>
     <div class="empty" id="transEmpty" style="padding:16px 0">
-      今天还没有签入登记。队员去其他联队训练时点上面「＋ 登记签入」。
+      没有与你相关的签入登记。队员去其他联队训练时点「＋ 登记签入」。
     </div>
   </div>
 </div>
 
+<!-- 签入登记弹窗 -->
 <div class="mask" id="mask">
   <div class="modal">
-    <h3 id="modalTitle">⇄ 登记跨队签入</h3>
+    <h3>⇄ 登记跨队签入</h3>
     <div class="frm"><label>迁出联队（人从哪队走）</label><select id="fFrom"></select></div>
     <div class="frm"><label>迁入联队（人去哪队训）</label><select id="fTo"></select></div>
     <div class="mrow">
@@ -208,26 +221,47 @@
   </div>
 </div>
 
+<!-- 管理员管理弹窗 -->
+<div class="mask" id="maskAdmin">
+  <div class="modal" style="max-width:460px">
+    <h3>⚙ 管理员管理 <span class="badge super">超管专属</span></h3>
+    <div class="hint2">普通管理员只能填报自己名下的联队；超级管理员可看全部并汇总。</div>
+    <div id="adminList"></div>
+    <div class="hint2">＋ 新增 / 编辑管理员：</div>
+    <div class="frm"><label>姓名</label><input type="text" id="aName" placeholder="如：王五"></div>
+    <div class="frm"><label>角色</label>
+      <select id="aRole">
+        <option value="admin">管理员（只看自己名下联队）</option>
+        <option value="super">超级管理员（看全部联队）</option>
+      </select></div>
+    <div class="frm" id="aTeamsBox"><label>负责联队（可多选）</label>
+      <div class="chk-grid" id="aTeamsChk"></div></div>
+    <div class="modal-btns">
+      <button class="btn plain" id="aCancel">关闭</button>
+      <button class="btn primary" id="aSave">保存管理员</button>
+    </div>
+  </div>
+</div>
+
 <footer>
-  军训联队数据回传 · v0.2（M2 填报+签入） · <a id="btnReset">恢复示例名单</a>
+  军训联队数据回传 · v0.3（管理员视角） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
 "use strict";
 /* =========================================================
- * 军训联队数据回传站 —— 单文件版 v0.2
- * 口径：人员口径。实到 = 本队自己人出勤（去别队训练也算实到）；
- *       迁入/迁出不参与出勤勾稽，仅用于总部对账与场地人数核算。
- * 缺勤(自动) = 应到 − 实到 − 病假 − 事假 − 伤病见习
- * 场地人数(导出) = 应到 + 迁入 − 迁出
+ * 军训联队数据回传站 v0.3 —— 管理员视角
+ * 口径：人员口径（实到=本队自己人出勤）；缺勤(自动)=应到−实到−病假−事假−伤病见习
+ * 角色：role=super 超管看全部；role=admin 只见 teams 名下联队（列表/统计/导出/签入均按可见范围）
  * 存储：
- *   mtr_teams_v1    : [{id, name, expected}]
- *   mtr_reports_v1  : { date: { teamId: {actual,sick,personal,injured,reporter,ts} } }
- *   mtr_transfers_v1: { date: [ {id,from,to,count,note,reporter,ts} ] }
- *   mtr_who_v1 / mtr_who_cur_v1 : 填报人
+ *   mtr_teams_v1    : [{id,name,expected}]
+ *   mtr_reports_v1  : { date:{ teamId:{actual,sick,personal,injured,reporter,ts} } }
+ *   mtr_transfers_v1: { date:[ {id,from,to,count,note,reporter,ts} ] }
+ *   mtr_admins_v1   : [ {name,role,teams:[]} ]   teams 仅对 admin 有意义
+ *   mtr_admin_cur   : 当前管理员名
  * ========================================================= */
 const LS_TEAMS="mtr_teams_v1",LS_REPORTS="mtr_reports_v1",LS_TRANS="mtr_transfers_v1",
-      LS_WHO="mtr_who_v1",LS_WHOCUR="mtr_who_cur_v1";
+      LS_ADMINS="mtr_admins_v1",LS_ADMINCUR="mtr_admin_cur";
 const MANUAL=["actual","sick","personal","injured"];
 const FLABEL={actual:"实到",sick:"病假",personal:"事假",injured:"伤病见习"};
 
@@ -256,17 +290,33 @@ function dayReport(date){return loadReports()[date]||{};}
 function loadTrans(){try{return JSON.parse(localStorage.getItem(LS_TRANS))||{};}catch(e){return {};}}
 function saveTrans(t){localStorage.setItem(LS_TRANS,JSON.stringify(t));}
 function dayTrans(date){return loadTrans()[date]||[];}
-function loadWho(){try{return JSON.parse(localStorage.getItem(LS_WHO))||[];}catch(e){return [];}}
-function curWho(){return localStorage.getItem(LS_WHOCUR)||"";}
+function loadAdmins(){try{return JSON.parse(localStorage.getItem(LS_ADMINS))||[];}catch(e){return [];}}
+function saveAdmins(a){localStorage.setItem(LS_ADMINS,JSON.stringify(a));}
+function curAdminName(){return localStorage.getItem(LS_ADMINCUR)||"";}
 
-const SEED=[["L01","第1联队",52],["L02","第2联队",50],["L03","第3联队",55],["L04","第4联队",48],
+const TEAM_SEED=[["L01","第1联队",52],["L02","第2联队",50],["L03","第3联队",55],["L04","第4联队",48],
   ["L05","第5联队",53],["L06","第6联队",50],["L07","第7联队",56],["L08","第8联队",49],
   ["L09","第9联队",51],["L10","第10联队",54],["L11","第11联队",50],["L12","第12联队",52]];
-function seedTeams(){saveTeams(SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));}
+const ADMIN_SEED=[
+  {name:"超级管理员",role:"super",teams:[]},
+  {name:"张三",role:"admin",teams:["L01","L02"]},
+  {name:"李四",role:"admin",teams:["L03","L04"]}];
+function seedAll(){saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));saveAdmins(ADMIN_SEED);}
+function seedTeams(){saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));}
 function getTeam(id){return loadTeams().find(x=>x.id===id)||null;}
 
+/* ---------- 管理员 / 可见范围 ---------- */
+function curAdmin(){const n=curAdminName();const a=loadAdmins().find(x=>x.name===n);return a||null;}
+function isSuper(){const a=curAdmin();return !!a&&a.role==="super";}
+function visibleTeams(){
+  const teams=loadTeams();const a=curAdmin();
+  if(!a||a.role==="super")return teams;
+  return teams.filter(t=>a.teams&&a.teams.includes(t.id));
+}
+function visibleIds(){return visibleTeams().map(t=>t.id);}
+function canSeeTeam(id){return isSuper()||(curAdmin()?.teams||[]).includes(id);}
+
 /* ---------- 派生 ---------- */
-/* 每队当日：手填四格数值 + 迁出/迁入汇总 + 已填格数 */
 function teamDerived(teamId){
   const rep=dayReport(curDate)[teamId]||{};
   const get=v=>{if(v===""||v==null)return 0;const n=parseInt(v,10);return Number.isFinite(n)&&n>=0?n:0;};
@@ -278,14 +328,12 @@ function teamDerived(teamId){
           filled,out,inn,rep};
 }
 function expectedOf(teamId){const t=getTeam(teamId);return t?num(t.expected):NaN;}
-/* 缺勤：未开始回传（一格未填）时返回 null（不显示误导数字） */
 function calcAbsent(teamId){
   const exp=expectedOf(teamId);if(!Number.isFinite(exp))return null;
   const d=teamDerived(teamId);if(d.filled===0)return null;
   return exp-d.actual-d.sick-d.personal-d.injured;
 }
 function rowStatus(d){return d.filled>=4?{txt:"已回传",cls:"done"}:d.filled>0?{txt:"部分("+d.filled+"/4)",cls:"part"}:{txt:"待回传",cls:"wait"};}
-/* 超填预警：手填合计 > 应到 */
 function rowOver(teamId){
   const exp=expectedOf(teamId);if(!Number.isFinite(exp))return false;
   const d=teamDerived(teamId);
@@ -294,8 +342,7 @@ function rowOver(teamId){
 
 /* ---------- 状态 ---------- */
 let curDate=todayStr();
-let teams=loadTeams();
-if(!teams.length){seedTeams();teams=loadTeams();}
+if(!loadTeams().length||!loadAdmins().length)seedAll();
 
 /* ---------- 行构建 ---------- */
 function rowHtml(t,i){
@@ -303,7 +350,6 @@ function rowHtml(t,i){
   const d=teamDerived(t.id);
   const st=rowStatus(d);
   const absent=calcAbsent(t.id);
-  const over=Number.isFinite(exp)&&d.filled>0&&(d.actual+d.sick+d.personal+d.injured)>exp;
   const man=MANUAL.map(f=>{
     const v=d.rep?d.rep[f]:"";
     const empty=String(v??"").trim()==="";
@@ -325,10 +371,10 @@ function rowHtml(t,i){
     "<td><span class='chip "+st.cls+"'>"+st.txt+"</span></td>"+
     "<td><button class='tbtn small tf-btn' data-id='"+cssEsc(t.id)+"' title='登记：本队有人去其他联队训练'>⇄ 签入</button></td>";
 }
-/* 局部刷新一行（编辑保存后调用，不重建整个表，避免连点丢焦点） */
 function paintRow(teamId){
   const tr=document.querySelector('#tbody tr[data-tid="'+cssEsc(teamId)+'"]');
   if(!tr)return;
+  const teams=visibleTeams();
   const idx=teams.findIndex(x=>x.id===teamId);
   if(idx<0){render();return;}
   tr.className=rowOver(teamId)?"tr-over":"";
@@ -336,19 +382,20 @@ function paintRow(teamId){
   paintStats();
 }
 function paintStats(){
-  const reps=dayReport(curDate);
+  const teams=visibleTeams();
   let expSum=0,trans=0,doneCnt=0;
   teams.forEach(t=>{
     const e=expectedOf(t.id);if(Number.isFinite(e))expSum+=e;
     const d=teamDerived(t.id);trans+=d.inn;
     const s=rowStatus(d);if(s.cls==="done"||s.cls==="part")doneCnt++;
   });
+  $("stTeams").textContent=teams.length;
   $("stExpected").textContent=expSum;
   $("stReported").textContent=doneCnt+"/"+teams.length;
   $("stRate").textContent=teams.length?(Math.round(doneCnt/teams.length*100)+"%"):"–";
   $("stTransfer").textContent=trans;
-  $("stTeams").textContent=teams.length;
   $("teamCount").textContent=teams.length;
+  $("teamTotal").textContent=loadTeams().length;
 }
 
 /* ---------- 渲染 ---------- */
@@ -358,21 +405,26 @@ function renderDateBar(){
   $("backToday").style.display=isToday?"none":"";
   $("todayMark").style.display=isToday?"":"none";
 }
-function renderWho(){
-  const who=loadWho(),cur=curWho();
-  const sel=$("whoSel");sel.innerHTML="";
-  const ph=document.createElement("option");ph.value="";ph.textContent=cur?"👤 "+cur:"👤 填报人：未设置";
-  sel.appendChild(ph);
-  who.forEach(n=>{if(n!==cur){const o=document.createElement("option");o.value=n;o.textContent=n;sel.appendChild(o);}});
-  const add=document.createElement("option");add.value="__new";add.textContent="＋ 新增填报人…";
-  sel.appendChild(add);
+function renderAdminSel(){
+  const admins=loadAdmins();const cur=curAdminName();
+  const sel=$("adminSel");sel.innerHTML="";
+  if(!admins.length){seedAll();}
+  loadAdmins().forEach(a=>{
+    const o=document.createElement("option");
+    o.value=a.name;o.textContent=a.name+(a.role==="super"?"（超管）":"");
+    if(a.name===cur)o.selected=true;
+    sel.appendChild(o);
+  });
+  $("btnAdmins").style.display=isSuper()?"":"none";
 }
 function renderTransList(){
   const ts=dayTrans(curDate);
+  const vis=visibleIds();
+  const mine=isSuper()?ts:ts.filter(t=>vis.includes(t.from)||vis.includes(t.to));
   const ul=$("transList");ul.innerHTML="";
-  $("transCount").textContent=ts.length+" 条";
-  $("transEmpty").style.display=ts.length?"none":"";
-  ts.forEach(t=>{
+  $("transCount").textContent=mine.length+" 条";
+  $("transEmpty").style.display=mine.length?"none":"";
+  mine.forEach(t=>{
     const li=document.createElement("li");
     li.innerHTML="<span class='flow'>"+esc(teamName(t.from))+" <span class='arrow-x'>→</span> "+esc(teamName(t.to))+"</span>"+
       "<span class='cnt'>×"+num(t.count)+"</span>"+
@@ -384,12 +436,15 @@ function renderTransList(){
 }
 function render(){
   renderDateBar();
-  teams=loadTeams();
+  const teams=visibleTeams();
   const tbody=$("tbody");tbody.innerHTML="";
-  const empty=!teams.length;
-  $("emptyBox").style.display=empty?"":"none";
-  $("tipBox").style.display=empty?"none":"";
-  if(empty){paintStats();renderTransList();return;}
+  const admins=loadAdmins();
+  const noTeams=!loadTeams().length;
+  const noScope=!noTeams&&!teams.length;
+  $("emptyBox").style.display=noTeams?"":"none";
+  $("noScopeBox").style.display=noScope?"":"none";
+  $("tipBox").style.display=(noTeams||noScope)?"none":"";
+  if(noTeams||noScope){paintStats();renderTransList();return;}
   teams.forEach((t,i)=>{
     const tr=document.createElement("tr");
     tr.dataset.tid=t.id;
@@ -405,6 +460,7 @@ function render(){
 function openEditor(span){
   const f=span.dataset.f;if(!f||span.querySelector("input"))return;
   const tr=span.closest("tr");const teamId=tr&&tr.dataset.tid;if(!teamId)return;
+  if(!canSeeTeam(teamId))return;
   const rep=dayReport(curDate)[teamId]||{};
   const old=String(rep[f]??"");
   span.innerHTML="<input type='number' min='0' step='1' inputmode='numeric' aria-label='"+FLABEL[f]+"'>";
@@ -417,7 +473,7 @@ function openEditor(span){
     const v=inp.value.trim();
     const all=loadReports();const day=all[curDate]||{};const cur=day[teamId]||{};
     if(v===""){delete cur[f];}
-    else{const n=parseInt(v,10);if(Number.isFinite(n)&&n>=0){cur[f]=String(n);cur.reporter=curWho()||cur.reporter||"";cur.ts=nowFmt();}}
+    else{const n=parseInt(v,10);if(Number.isFinite(n)&&n>=0){cur[f]=String(n);cur.reporter=curAdminName()||cur.reporter||"";cur.ts=nowFmt();}}
     if(Object.keys(cur).length)day[teamId]=cur;else delete day[teamId];
     all[curDate]=day;saveReports(all);
     paintRow(teamId);
@@ -430,6 +486,7 @@ function openEditor(span){
   });
 }
 function editExpected(teamId){
+  if(!canSeeTeam(teamId))return;
   const t=getTeam(teamId);if(!t)return;
   const v=prompt("修改 "+t.name+" 的应到人数：",expectedOf(teamId)||"");
   if(v==null)return;
@@ -481,7 +538,7 @@ function importTeams(file){
       out.push({id,name,expected:Number.isFinite(exp)?exp:0});
     }
     if(!out.length){alert("解析后没有有效联队行");return;}
-    if(confirm("将用导入名单替换当前 "+teams.length+" 个联队？\n（导入 "+out.length+" 个，已有日报/签入数据不受影响）")){
+    if(confirm("将用导入名单替换当前名单（"+loadTeams().length+" 个）？\n（导入 "+out.length+" 个，日报/签入/管理员数据不受影响）")){
       saveTeams(out);render();alert("✅ 导入成功："+out.length+" 个联队");
     }
   }).catch(e=>alert("读取文件失败："+e.message));
@@ -492,7 +549,7 @@ function download(filename,content){
   document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},200);
 }
 function exportDaily(){
-  const reps=dayReport(curDate);
+  const teams=visibleTeams();
   const lines=["联队编号,联队名称,应到,实到,病假,事假,伤病见习,缺勤,迁出,迁入,场地人数,填报人,填报时间,回传状态"];
   teams.forEach(t=>{
     const d=teamDerived(t.id);
@@ -508,29 +565,30 @@ function exportDaily(){
       d.rep?.reporter??"",d.rep?.ts??"",st.txt];
     lines.push(row.map(csvCell).join(","));
   });
-  download("军训联队日报_"+curDate+".csv",lines.join("\r\n"));
+  download("军训联队日报_"+curDate+"_"+(curAdminName()||"全部")+".csv",lines.join("\r\n"));
 }
 function exportTrans(){
   const ts=dayTrans(curDate);
+  const vis=visibleIds();
+  const mine=isSuper()?ts:ts.filter(t=>vis.includes(t.from)||vis.includes(t.to));
   const lines=["序号,迁出联队,迁入联队,人数,备注,登记人,登记时间"];
-  ts.forEach((t,i)=>{
+  mine.forEach((t,i)=>{
     lines.push([i+1,teamName(t.from),teamName(t.to),num(t.count),t.note||"",t.reporter||"",t.ts].map(csvCell).join(","));
   });
-  download("军训联队签入明细_"+curDate+".csv",lines.join("\r\n"));
+  download("军训联队签入明细_"+curDate+"_"+(curAdminName()||"全部")+".csv",lines.join("\r\n"));
 }
 function exportTemplate(){
   download("军训联队名单模板.csv",["联队编号,联队名称,应到人数","L01,第1联队,52","L02,第2联队,50","L03,第3联队,55"].join("\r\n"));
 }
 
 /* ---------- 签入登记 ---------- */
-function openModal(presetFrom){
-  fillTeamSelect("fFrom");fillTeamSelect("fTo");
-  $("fCnt").value=1;$("fNote").value="";
-  const from=$("fFrom"),to=$("fTo");
-  if(presetFrom)from.value=presetFrom;
-  syncToOptions(from,to);
-  $("mask").classList.add("show");
-  setTimeout(()=>from.focus(),50);
+function fillFromSelect(){
+  const sel=$("fFrom");sel.innerHTML="";
+  visibleTeams().forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.id+" · "+t.name;sel.appendChild(o);});
+}
+function fillTeamSelect(selId){
+  const sel=$(selId);sel.innerHTML="";
+  loadTeams().forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.id+" · "+t.name;sel.appendChild(o);});
 }
 function syncToOptions(from,to){
   [...to.options].forEach(o=>o.disabled=false);
@@ -540,16 +598,21 @@ function syncToOptions(from,to){
     if(first)to.value=first.value;
   }
 }
-function fillTeamSelect(selId){
-  const sel=$(selId);sel.innerHTML="";
-  teams.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.id+" · "+t.name;sel.appendChild(o);});
+function openModal(presetFrom){
+  fillFromSelect();fillTeamSelect("fTo");
+  $("fCnt").value=1;$("fNote").value="";
+  const from=$("fFrom"),to=$("fTo");
+  if(presetFrom){const ok=[...from.options].some(o=>o.value===presetFrom);if(ok)from.value=presetFrom;}
+  syncToOptions(from,to);
+  $("mask").classList.add("show");
+  setTimeout(()=>from.focus(),50);
 }
 function doAddTrans(){
   const from=$("fFrom").value,to=$("fTo").value,cnt=parseInt($("fCnt").value,10);
   if(!from||!to||from===to){alert("请选择两个不同的联队");return;}
   if(!Number.isFinite(cnt)||cnt<1){alert("人数须为 ≥1 的整数");return;}
   const all=loadTrans();const day=all[curDate]||[];
-  day.push({id:uid(),from,to,count:String(cnt),note:$("fNote").value.trim(),reporter:curWho()||"",ts:nowFmt()});
+  day.push({id:uid(),from,to,count:String(cnt),note:$("fNote").value.trim(),reporter:curAdminName()||"",ts:nowFmt()});
   all[curDate]=day;saveTrans(all);
   $("mask").classList.remove("show");
   render();
@@ -557,20 +620,104 @@ function doAddTrans(){
 function undoTrans(id){
   const all=loadTrans();const day=all[curDate]||[];
   const t=day.find(x=>x.id===id);if(!t)return;
+  if(!canSeeTeam(t.from)&&!canSeeTeam(t.to))return;
   if(!confirm("撤销签入单："+teamName(t.from)+" → "+teamName(t.to)+" ×"+num(t.count)+" ？"))return;
   all[curDate]=day.filter(x=>x.id!==id);saveTrans(all);render();
+}
+
+/* ---------- 管理员管理 ---------- */
+let aEditName=null;   // null=新增；有值=编辑该管理员
+function renderAdminPanel(){
+  const list=$("adminList");list.innerHTML="";
+  loadAdmins().forEach(a=>{
+    const div=document.createElement("div");div.className="admin-item";
+    const scope=a.role==="super"?"全部联队":(a.teams&&a.teams.length?a.teams.map(teamName).join("、")||"（未分配）":"（未分配）");
+    const superCnt=loadAdmins().filter(x=>x.role==="super").length;
+    div.innerHTML="<b>"+esc(a.name)+"</b>"+
+      (a.role==="super"?"<span class='badge super'>超级管理员</span>":"<span class='badge admin'>管理员</span>")+
+      "<span style='color:var(--sub);font-size:12px'>"+esc(scope)+"</span>"+
+      "<span class='sp'><button class='tbtn small a-edit' data-name='"+cssEsc(a.name)+"'>编辑</button>"+
+      (a.role!=="super"||superCnt>1?"<button class='tbtn small danger a-del' data-name='"+cssEsc(a.name)+"'>删除</button>":"")+"</span>";
+    list.appendChild(div);
+  });
+}
+function adminTeamsHtml(selTeams){
+  const box=$("aTeamsChk");box.innerHTML="";
+  loadTeams().forEach(t=>{
+    const lb=document.createElement("label");
+    const cb=document.createElement("input");cb.type="checkbox";cb.value=t.id;
+    if(selTeams&&selTeams.includes(t.id))cb.checked=true;
+    lb.appendChild(cb);lb.appendChild(document.createTextNode(" "+t.id+" "+t.name));
+    box.appendChild(lb);
+  });
+}
+function openAdminEditor(name){
+  const admins=loadAdmins();const a=name?admins.find(x=>x.name===name):null;
+  aEditName=a?a.name:null;
+  $("aName").value=a?a.name:"";
+  $("aRole").value=a?a.role:"admin";
+  adminTeamsHtml(a&&a.role!=="super"?a.teams||[]:[]);
+  $("aTeamsBox").style.display=(a?a.role:"admin")==="super"?"none":"";
+  $("maskAdmin").classList.add("show");
+  renderAdminPanel();
+  setTimeout(()=>$("aName").focus(),50);
+}
+function saveAdminEditor(){
+  const name=$("aName").value.trim();
+  const role=$("aRole").value;
+  if(!name){alert("姓名不能为空");return;}
+  const admins=loadAdmins();
+  if(admins.some(a=>a.name===name&&a.name!==aEditName)){alert("已存在同名管理员："+name);return;}
+  const teams=[...$("aTeamsChk").querySelectorAll("input:checked")].map(cb=>cb.value);
+  if(role==="admin"&&!teams.length){if(!confirm("该管理员未分配任何联队，他登录后将看不到任何联队。确认？"))return;}
+  if(aEditName){
+    const i=admins.findIndex(x=>x.name===aEditName);
+    if(i<0)return;
+    const wasSuper=admins[i].role==="super";const wasCur=admins[i].name===curAdminName();
+    admins[i]={name,role,teams:role==="super"?[]:teams};
+    if(wasCur)localStorage.setItem(LS_ADMINCUR,name);
+  }else{
+    admins.push({name,role,teams:role==="super"?[]:teams});
+  }
+  saveAdmins(admins);
+  aEditName=null;
+  renderAdminSel();renderAdminPanel();
+  if(curAdminName()===""&&admins.length)localStorage.setItem(LS_ADMINCUR,admins[0].name);
+  render();
+}
+function delAdmin(name){
+  const admins=loadAdmins();
+  const a=admins.find(x=>x.name===name);if(!a)return;
+  if(a.role==="super"&&admins.filter(x=>x.role==="super").length<=1){alert("至少保留一名超级管理员");return;}
+  if(!confirm("删除管理员「"+name+"」？（其名下联队将无人负责，数据保留）"))return;
+  saveAdmins(admins.filter(x=>x.name!==name));
+  if(curAdminName()===name){
+    const s=loadAdmins().find(x=>x.role==="super")||loadAdmins()[0];
+    localStorage.setItem(LS_ADMINCUR,s?s.name:"");
+  }
+  renderAdminSel();renderAdminPanel();render();
 }
 
 /* ---------- 事件 ---------- */
 $("prevDay").onclick=()=>{curDate=shiftDate(curDate,-1);render();};
 $("nextDay").onclick=()=>{curDate=shiftDate(curDate,1);render();};
 $("backToday").onclick=()=>{curDate=todayStr();render();};
+$("adminSel").onchange=e=>{localStorage.setItem(LS_ADMINCUR,e.target.value);renderAdminSel();render();};
+$("btnAdmins").onclick=()=>openAdminEditor(null);
+$("aCancel").onclick=()=>{$("maskAdmin").classList.remove("show");aEditName=null;};
+$("maskAdmin").addEventListener("click",e=>{if(e.target===$("maskAdmin")){$("maskAdmin").classList.remove("show");aEditName=null;}});
+$("aSave").onclick=saveAdminEditor;
+$("aRole").onchange=e=>{$("aTeamsBox").style.display=e.target.value==="super"?"none":"";};
+$("adminList").addEventListener("click",e=>{
+  const ed=e.target.closest(".a-edit");if(ed){openAdminEditor(ed.dataset.name);return;}
+  const del=e.target.closest(".a-del");if(del){delAdmin(del.dataset.name);return;}
+});
 $("btnTemplate").onclick=exportTemplate;
 $("btnExportDaily").onclick=exportDaily;
 $("btnTransExport").onclick=exportTrans;
 $("btnImportTeams").onclick=()=>$("fileTeams").click();
 $("fileTeams").onchange=e=>{if(e.target.files[0])importTeams(e.target.files[0]);e.target.value="";};
-$("btnReset").onclick=()=>{if(confirm("恢复示例名单？将覆盖当前名单（日报/签入数据保留）。")){seedTeams();render();}};
+$("btnReset").onclick=()=>{if(confirm("恢复全部示例数据？（名单+管理员，日报/签入保留）")){seedAll();if(!loadAdmins().find(x=>x.name===curAdminName()))localStorage.setItem(LS_ADMINCUR,"超级管理员");renderAdminSel();render();}};
 $("btnAddTeam").onclick=()=>{
   const id=prompt("联队编号（如 L13）：");if(id==null)return;
   const nm=prompt("联队名称（如 第13联队）：");if(nm==null)return;
@@ -587,19 +734,9 @@ $("fCancel").onclick=()=>$("mask").classList.remove("show");
 $("fOk").onclick=doAddTrans;
 $("mask").addEventListener("click",e=>{if(e.target===$("mask"))$("mask").classList.remove("show");});
 $("fFrom").addEventListener("change",()=>syncToOptions($("fFrom"),$("fTo")));
-$("whoSel").onchange=e=>{
-  const v=e.target.value;
-  if(v==="__new"){
-    const nm=prompt("输入填报人姓名：");if(nm==null||!nm.trim()){renderWho();return;}
-    const who=loadWho();if(!who.includes(nm.trim()))who.push(nm.trim());
-    localStorage.setItem(LS_WHO,JSON.stringify(who));
-    localStorage.setItem(LS_WHOCUR,nm.trim());
-  }else if(v){localStorage.setItem(LS_WHOCUR,v);}
-  renderWho();
-};
 document.addEventListener("click",e=>{
   const tf=e.target.closest(".tf-btn");
-  if(tf){openModal(tf.dataset.id);return;}
+  if(tf){if(!canSeeTeam(tf.dataset.id))return;openModal(tf.dataset.id);return;}
   const un=e.target.closest(".undo");
   if(un){undoTrans(un.dataset.undo);return;}
   const ex=e.target.closest("[data-exp]");
@@ -608,7 +745,7 @@ document.addEventListener("click",e=>{
   if(v){
     if(v.dataset.f==="absent")return;
     let span=v;
-    if(!span.isConnected){   // 上格保存触发整行重绘，本格已被替换 → 定位到新节点继续编辑
+    if(!span.isConnected){
       const tr=v.closest("tr"),tid=tr&&tr.dataset.tid,f=v.dataset.f;
       if(tid)span=document.querySelector('#tbody tr[data-tid="'+cssEsc(tid)+'"] .val[data-f="'+f+'"]');
     }
@@ -618,7 +755,11 @@ document.addEventListener("click",e=>{
 });
 
 /* ---------- init ---------- */
-renderWho();
+if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
+  const s=loadAdmins().find(x=>x.role==="super")||loadAdmins()[0];
+  localStorage.setItem(LS_ADMINCUR,s?s.name:"");
+}
+renderAdminSel();
 render();
 </script>
 </body>
