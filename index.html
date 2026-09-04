@@ -300,6 +300,7 @@
         <span id="rollCount"></span>
         <span class="bar"><i id="rollBar"></i></span>
         <span class="roll-filter">🔍 <input type="text" id="rollSearch" placeholder="搜姓名…" style="border:1px solid var(--line);border-radius:8px;padding:4px 8px;width:110px;font-size:12.5px"> <label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="rollOnlyBad">仅看异常</label></span>
+        <button class="tbtn small" id="btnFace" style="margin-left:auto" title="摄像头/照片数人头作参考（本地检测不存画面）">📷 数人头</button>
       </div>
       <div style="font-size:12px;color:var(--sub)">每人都要点一个状态（到场=默认；病假/事假/伤病见习/缺勤/去他队）。点「去他队」后选目标联队。</div>
     </div>
@@ -313,8 +314,30 @@
   </div>
 </div>
 
+<!-- 人脸计数弹窗 -->
+<div class="mask" id="maskFace">
+  <div class="modal modal-xl" style="max-width:560px">
+    <h3 id="faceTitle">📷 数人头（参考）</h3>
+    <div style="font-size:12px;color:var(--sub);margin-bottom:10px">检测只在<b>你的设备本地</b>运行，不保存任何画面。镜头内人数受遮挡/距离影响，仅供参考，不能替代逐人点名。</div>
+    <div style="position:relative;background:#111;min-height:190px;border-radius:10px;overflow:hidden" id="faceStage">
+      <video id="faceVideo" autoplay playsinline muted style="width:100%;display:none"></video>
+      <img id="faceImg" alt="" style="width:100%;display:none">
+      <canvas id="faceCanvas" style="position:absolute;left:0;top:0;width:100%;height:100%"></canvas>
+      <div id="facePlaceholder" style="color:#9CA3AF;text-align:center;padding:70px 10px;font-size:13px">等待画面…</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn" id="faceCamBtn">📷 开启摄像头</button>
+      <button class="tbtn" id="faceImgBtn">🖼 上传照片</button>
+      <input type="file" id="faceFile" accept="image/*" hidden>
+      <span style="align-self:center;font-size:11.5px;color:var(--sub)" id="faceStatus"></span>
+    </div>
+    <div id="faceResult" style="margin-top:10px;font-size:14px;font-weight:700;color:var(--green-d)"></div>
+    <div class="modal-btns"><button class="btn plain" id="faceClose">关闭</button></div>
+  </div>
+</div>
+
 <footer>
-  军训联队数据回传 · v0.5（花名册点名） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.6（花名册点名+人脸计数） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -1174,6 +1197,137 @@ $("rollSave").onclick=rollSave;
 $("maskRoll").addEventListener("click",e=>{if(e.target===$("maskRoll"))closeRoll();});
 $("rollSearch").addEventListener("input",e=>{rollKW=e.target.value;renderRoll();});
 $("rollOnlyBad").addEventListener("change",e=>{rollFilterBad=e.target.checked;renderRoll();});
+
+/* ---------- 人脸计数（参考，不存画面） ---------- */
+let faceLibLoaded=false,faceLibOk=false,faceTeam=null,faceStream=null,faceTimer=null,faceURL=null;
+const FACE_DIR=location.href.substring(0,location.href.lastIndexOf("/")+1);   // 站内绝对目录（含子路径部署）
+const FACE_LIBS=[FACE_DIR+"assets/lib/tf.min.js",FACE_DIR+"assets/lib/face-api.min.js"];
+const FACE_MODEL=FACE_DIR+"assets/models/tiny_face_detector";
+function loadFaceLibs(){
+  return new Promise(res=>{
+    if(faceLibLoaded)return res(faceLibOk);
+    faceLibLoaded=true;let i=0;
+    (function next(){
+      if(i>=FACE_LIBS.length){faceLibOk=!!(window.faceapi&&window.tf);return res(faceLibOk);}
+      const s=document.createElement("script");s.src=FACE_LIBS[i++];s.onload=next;s.onerror=()=>res(false);
+      document.head.appendChild(s);
+    })();
+  });
+}
+let faceModelP=null;
+function ensureFace(){
+  if(!faceModelP)faceModelP=(async()=>{
+    const ok=await loadFaceLibs();
+    if(!ok)throw new Error("人脸库加载失败：页面需通过 http(s) 打开且网络可用");
+    if(new URLSearchParams(location.search).has("cpu")){   // ?cpu=1 → CPU 后端（无 GPU/兼容模式）
+      await tf.setBackend("cpu");await tf.ready();
+    }
+    await faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL);
+  })();
+  return faceModelP;
+}
+function faceOpts(){return new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.3});}
+function faceReference(teamId){
+  const st=rollState(teamId);
+  if(Object.keys(st).length){const c=rollSummary(st);return c.ok+c.away;}   // 点名草稿：到场+去他队
+  const rep=dayReport(curDate)[teamId];
+  return rep?(parseInt(rep.actual,10)||0):0;
+}
+function faceReport(n){
+  const ref=faceReference(faceTeam);
+  const rosterN=rosterOf(faceTeam).length;
+  let msg="镜头内检测到 <b>"+n+"</b> 张脸 · 你记录到场 "+ref+" 人（含去他队）"+(rosterN?" · 应到 "+rosterN:"");
+  if(n<ref)msg+="<br><span style='color:var(--warn)'>⚠ 少于记录到场数：可能有人没拍进画面/被遮挡，可让人散开分排再拍。</span>";
+  else if(n>=rosterN)msg+="<br><span style='color:var(--ok)'>✓ 与应到人数相当。</span>";
+  $("faceResult").innerHTML=msg;
+}
+function drawFaceBoxes(det){
+  const cv=$("faceCanvas");
+  const src=$("faceVideo").style.display!=="none"?$("faceVideo"):$("faceImg");
+  const W=src.videoWidth||src.naturalWidth||0,H=src.videoHeight||src.naturalHeight||0;
+  if(!W)return;
+  cv.width=W;cv.height=H;
+  const ctx=cv.getContext("2d");ctx.clearRect(0,0,W,H);
+  det.forEach(d=>{
+    const r=d.box;
+    ctx.strokeStyle="#22C55E";ctx.lineWidth=Math.max(2,W/420);
+    ctx.strokeRect(r.x,r.y,r.width,r.height);
+  });
+}
+function showFaceMedia(el,video){
+  $("faceVideo").style.display=video?"":"none";
+  $("faceImg").style.display=video?"none":"";
+  $("facePlaceholder").style.display="none";
+  if(video){$("faceVideo").srcObject=el;el.play();}
+}
+function stopFaceAll(){
+  if(faceStream){faceStream.getTracks().forEach(t=>t.stop());faceStream=null;}
+  if(faceTimer){clearTimeout(faceTimer);faceTimer=null;}
+  if(faceURL){URL.revokeObjectURL(faceURL);faceURL=null;}
+  $("faceVideo").style.display="none";$("faceVideo").srcObject=null;
+  $("faceImg").style.display="none";$("faceImg").src="";
+  $("facePlaceholder").style.display="";
+  const cv=$("faceCanvas");cv.width=0;cv.height=0;
+}
+async function openFace(teamId){
+  faceTeam=teamId;
+  const t=getTeam(teamId);
+  const roster=rosterOf(teamId);
+  $("faceTitle").textContent="📷 数人头（参考）· "+(t?t.name:teamId)+(roster.length?" · 应到 "+roster.length:"");
+  $("faceStatus").textContent="加载 AI 模型中…";$("faceResult").textContent="";
+  $("maskFace").classList.add("show");
+  try{
+    await ensureFace();
+    $("faceStatus").textContent="模型就绪 ✅";
+    faceReport(faceapi?0:0);
+  }catch(e){
+    $("faceStatus").textContent="❌ "+e.message;
+  }
+}
+function closeFace(){stopFaceAll();$("maskFace").classList.remove("show");faceTeam=null;}
+async function faceStartCam(){
+  stopFaceAll();
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){alert("当前环境不支持摄像头（需 https/localhost）");return;}
+  $("faceStatus").textContent="请求摄像头权限…";
+  try{
+    faceStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
+    showFaceMedia(faceStream,true);
+    $("faceStatus").textContent="正在实时检测…点画面下方结果";
+    const tick=async()=>{
+      const v=$("faceVideo");
+      if(!faceStream||v.readyState<2){if(faceStream)faceTimer=setTimeout(tick,400);return;}
+      try{
+        const det=await faceapi.detectAllFaces(v,faceOpts());
+        drawFaceBoxes(det);
+        faceReport(det.length);
+      }catch(e){}
+      faceTimer=setTimeout(tick,350);
+    };
+    tick();
+  }catch(e){$("faceStatus").textContent="摄像头不可用："+e.message;}
+}
+function faceStartImg(file){
+  stopFaceAll();
+  faceURL=URL.createObjectURL(file);
+  const img=$("faceImg");
+  img.onload=async()=>{
+    showFaceMedia(null,false);
+    $("faceStatus").textContent="分析中…";
+    try{
+      const det=await faceapi.detectAllFaces(img,faceOpts());
+      drawFaceBoxes(det);
+      faceReport(det.length);
+      $("faceStatus").textContent="识别完成（仅本地，未上传）";
+    }catch(e){$("faceStatus").textContent="识别失败："+e.message;}
+  };
+  img.src=faceURL;
+}
+$("btnFace").onclick=()=>openFace(rollTeam);
+$("faceCamBtn").onclick=faceStartCam;
+$("faceImgBtn").onclick=()=>$("faceFile").click();
+$("faceFile").onchange=e=>{if(e.target.files[0])faceStartImg(e.target.files[0]);e.target.value="";};
+$("faceClose").onclick=closeFace;
+$("maskFace").addEventListener("click",e=>{if(e.target===$("maskFace"))closeFace();});
 
 /* ---------- init ---------- */
 if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
