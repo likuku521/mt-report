@@ -1,0 +1,5 @@
+# 开发产物不入库
+_preview*.png
+_verify*.py
+__pycache__/
+*.log

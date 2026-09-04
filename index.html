@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>军训联队数据回传</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
+<style>
+  :root{
+    --green:#2E7D32; --green-d:#1B5E20; --green-l:#E8F5E9;
+    --bg:#F5F7F5; --card:#FFFFFF; --line:#E0E4E0;
+    --txt:#1F2937; --sub:#6B7280;
+    --ok:#16A34A; --warn:#F59E0B; --bad:#DC2626; --grey:#9CA3AF;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh}
+  header{background:linear-gradient(135deg,var(--green-d),var(--green));color:#fff;padding:14px 16px 10px}
+  .wrap{max-width:1020px;margin:0 auto}
+  .top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .logo{font-size:20px}
+  h1{font-size:19px;font-weight:700;letter-spacing:.5px}
+  .sub{font-size:12px;opacity:.85;margin-top:2px}
+  .spacer{flex:1}
+  .btn{border:none;border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;font-weight:600;transition:.15s;display:inline-flex;align-items:center;gap:6px;background:#fff;color:var(--green-d)}
+  .btn:hover{transform:translateY(-1px);box-shadow:0 3px 10px rgba(0,0,0,.18)}
+  .btn.ghost{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5)}
+  .btn.ghost:hover{background:rgba(255,255,255,.12)}
+  .btn.small{padding:5px 10px;font-size:12px}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  select.who{background:#fff;color:var(--green-d);border:none;border-radius:8px;padding:7px 8px;font-size:13px;font-weight:600;max-width:150px;cursor:pointer}
+  .datebar{background:var(--card);border-bottom:1px solid var(--line);padding:8px 0}
+  .datebar .wrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .arrow{width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:16px;color:var(--green-d);display:flex;align-items:center;justify-content:center}
+  .arrow:hover{background:var(--green-l)}
+  #dateLabel{font-size:15px;font-weight:700;min-width:160px;text-align:center}
+  #dateLabel small{color:var(--sub);font-weight:400;font-size:12px;margin-left:6px}
+  .today-chip{background:var(--green-l);color:var(--green-d);border-radius:999px;padding:2px 10px;font-size:12px;font-weight:700}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding:14px 0 4px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .stat .num{font-size:24px;font-weight:800;color:var(--green-d);line-height:1.2}
+  .stat .num.small{font-size:18px}
+  .stat .lab{font-size:12px;color:var(--sub);margin-top:2px}
+  main{padding:8px 0 40px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:12px;overflow:hidden}
+  .card h2{font-size:14px;color:var(--sub);font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+  .tbtn{background:#fff;border:1px solid var(--line);color:var(--txt);border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap}
+  .tbtn:hover{border-color:var(--green);color:var(--green-d)}
+  .tbtn.primary{background:var(--green);color:#fff;border-color:var(--green)}
+  .tbtn.danger{color:var(--bad);border-color:#FECACA}
+  .tbtn.small{padding:4px 9px;font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:var(--green-l);color:var(--green-d);text-align:left;padding:8px 6px;font-weight:700;white-space:nowrap;position:sticky;top:0;z-index:1}
+  th.num{text-align:right}
+  td{padding:6px;border-bottom:1px solid #EEF1EE;text-align:left}
+  tr:hover td{background:#FAFCFA}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .val{display:inline-block;min-width:36px;padding:3px 5px;border-radius:6px;cursor:pointer;border:1px solid transparent}
+  .val:hover{background:var(--green-l);border-color:#C8E6C9}
+  .val.empty{color:var(--grey)}
+  .val.over{color:var(--bad);font-weight:700;background:#FEF2F2}
+  .val.auto{color:var(--sub);cursor:help;background:transparent;border-color:transparent}
+  .val.auto:hover{background:transparent;border-color:transparent}
+  .val.auto.neg{color:var(--bad);font-weight:700}
+  .val input{width:60px;border:1.5px solid var(--green);border-radius:6px;padding:2px 5px;font-size:13px;text-align:right;outline:none;font-family:inherit}
+  .chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap}
+  .chip.wait{background:#F3F4F6;color:var(--grey)}
+  .chip.part{background:#FEF3C7;color:#92400E}
+  .chip.done{background:#DCFCE7;color:#166534}
+  .tag{display:inline-block;background:var(--green-l);color:var(--green-d);font-size:11px;border-radius:4px;padding:0 5px;margin-left:4px}
+  .tr-over td{background:#FEF2F2!important}
+  .empty{text-align:center;color:var(--sub);padding:30px 0;font-size:13px}
+  .tip{font-size:12px;color:var(--sub);line-height:1.7;margin-top:10px;background:#F9FAF9;border:1px dashed var(--line);border-radius:8px;padding:10px 12px}
+  .trans-list{list-style:none}
+  .trans-list li{display:flex;align-items:center;gap:8px;padding:7px 6px;border-bottom:1px dashed #EEF1EE;font-size:13px;flex-wrap:wrap}
+  .trans-list li:last-child{border-bottom:none}
+  .flow{display:inline-flex;align-items:center;gap:6px;font-weight:600;flex-wrap:wrap}
+  .arrow-x{color:var(--green);font-weight:800}
+  .cnt{background:var(--green);color:#fff;border-radius:6px;padding:1px 8px;font-weight:700;font-size:12.5px}
+  .meta{color:var(--sub);font-size:12px}
+  .undo{color:var(--bad);cursor:pointer;font-size:12px;border:none;background:none;text-decoration:underline;padding:2px 4px;margin-left:auto}
+  .note-x{color:var(--sub);font-size:12px}
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .mask.show{display:flex}
+  .modal{background:#fff;border-radius:14px;width:100%;max-width:380px;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.25)}
+  .modal h3{font-size:16px;margin-bottom:14px}
+  .frm{margin-bottom:12px}
+  .frm label{display:block;font-size:12.5px;color:var(--sub);margin-bottom:4px}
+  .frm select,.frm input{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;font-family:inherit;background:#fff;color:var(--txt)}
+  .frm input:focus,.frm select:focus{outline:none;border-color:var(--green)}
+  .mrow{display:flex;gap:10px}
+  .mrow .frm{flex:1}
+  .modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+  .modal-btns .btn{padding:7px 16px}
+  .btn.plain{background:#F3F4F6;color:var(--txt)}
+  footer{color:var(--sub);font-size:12px;text-align:center;padding:16px 0 30px}
+  footer a{color:var(--grey);cursor:pointer;text-decoration:underline}
+  .tbl-scroll{overflow-x:auto}
+  .legend{font-size:11.5px;color:var(--sub);display:flex;gap:14px;flex-wrap:wrap}
+  .legend b{color:var(--green-d)}
+  @media(max-width:640px){ h1{font-size:16px} .sub{display:none} .stat .num{font-size:20px} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap top">
+    <span class="logo">📋</span>
+    <div>
+      <h1>军训联队数据回传</h1>
+      <div class="sub">各联队每日统计回传总部 · 数据存储于本机浏览器，导出文件即备份</div>
+    </div>
+    <div class="spacer"></div>
+    <select class="who" id="whoSel" title="选择当前填报人（团队留痕）"></select>
+    <button class="btn ghost small" id="btnTemplate">⬇ 名单模板</button>
+    <button class="btn ghost small" id="btnImportTeams">📥 导入名单</button>
+    <button class="btn" id="btnExportDaily">⬇ 导出当日汇总 CSV</button>
+    <input type="file" id="fileTeams" accept=".csv,.txt" hidden>
+  </div>
+</header>
+
+<div class="datebar">
+  <div class="wrap">
+    <button class="arrow" id="prevDay" title="前一天">‹</button>
+    <div id="dateLabel"></div>
+    <button class="arrow" id="nextDay" title="后一天">›</button>
+    <button class="btn small" id="backToday" style="display:none">回到今天</button>
+    <span class="today-chip" id="todayMark" style="display:none">今天</span>
+    <div class="spacer"></div>
+    <span style="font-size:12px;color:var(--sub)">名单 <b id="teamCount">0</b> 个联队</span>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="stats">
+    <div class="stat"><div class="num" id="stTeams">–</div><div class="lab">应报联队</div></div>
+    <div class="stat"><div class="num" id="stExpected">–</div><div class="lab">应到总人数</div></div>
+    <div class="stat"><div class="num small" id="stReported">–</div><div class="lab">今日已回传</div></div>
+    <div class="stat"><div class="num small" id="stRate">–</div><div class="lab">回传率</div></div>
+    <div class="stat"><div class="num small" id="stTransfer">–</div><div class="lab">跨队签入人次</div></div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <button class="tbtn primary" id="btnAddTeam">＋ 新增联队</button>
+      <button class="tbtn" id="btnClearDay" style="color:var(--bad)">清空当日回传</button>
+      <span class="legend" style="margin-left:auto">
+        <span>🟢 <b>已回传</b></span><span>🟡 部分</span><span>⚪ 待回传</span>
+      </span>
+    </div>
+    <div class="tbl-scroll">
+      <table>
+        <thead><tr>
+          <th style="width:36px">#</th>
+          <th>联队</th>
+          <th class="num" title="名单固定人数">应到</th>
+          <th class="num" title="本队自己人实际参训人数（去别队训练也算）">实到</th>
+          <th class="num" title="病假人数">病假</th>
+          <th class="num" title="事假人数">事假</th>
+          <th class="num" title="伤病见习（随队不训）">伤病见习</th>
+          <th class="num" title="自动 = 应到 − 实到 − 病假 − 事假 − 伤病见习">缺勤</th>
+          <th class="num" title="本队今天去其他联队训练人数（签入单自动汇总）">⇄出</th>
+          <th class="num" title="其他联队今天来本队训练人数（签入单自动汇总）">⇄入</th>
+          <th>填报人</th>
+          <th>状态</th>
+          <th style="width:80px">操作</th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty" id="emptyBox" style="display:none">
+      还没有名单。<br>点击「⬇ 名单模板」下载模板 → 填好联队 → 点「📥 导入名单」；<br>或点击「＋ 新增联队」逐条添加。
+    </div>
+    <div class="tip" id="tipBox">
+      💡 <b>填报</b>：点「实到 / 病假 / 事假 / 伤病见习」的 <b>–</b> 直接输入数字，回车或点别处保存。缺勤自动算，不用填。<br>
+      ⇄ <b>跨队签入</b>：队员去其他联队训练 → 点该行「⇄ 签入」登记，或下方卡片「＋ 登记签入」；系统自动汇总迁出/迁入并进报表。<br>
+      ⚠️ 数据只存在<b>当前设备浏览器</b>，填完请「⬇ 导出当日汇总 CSV」留档。
+    </div>
+  </div>
+
+  <div class="card" id="transferCard">
+    <div class="toolbar">
+      <h2 style="margin:0">⇄ 跨队签入登记 <span id="transCount" style="color:var(--green-d)">0 条</span></h2>
+      <span class="spacer"></span>
+      <button class="tbtn" id="btnTransExport">⬇ 导出明细</button>
+      <button class="tbtn primary" id="btnTransAdd">＋ 登记签入</button>
+    </div>
+    <ul class="trans-list" id="transList"></ul>
+    <div class="empty" id="transEmpty" style="padding:16px 0">
+      今天还没有签入登记。队员去其他联队训练时点上面「＋ 登记签入」。
+    </div>
+  </div>
+</div>
+
+<div class="mask" id="mask">
+  <div class="modal">
+    <h3 id="modalTitle">⇄ 登记跨队签入</h3>
+    <div class="frm"><label>迁出联队（人从哪队走）</label><select id="fFrom"></select></div>
+    <div class="frm"><label>迁入联队（人去哪队训）</label><select id="fTo"></select></div>
+    <div class="mrow">
+      <div class="frm"><label>人数</label><input type="number" id="fCnt" min="1" step="1" value="1" inputmode="numeric"></div>
+      <div class="frm"><label>备注（可选）</label><input type="text" id="fNote" placeholder="如：合并训练"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn plain" id="fCancel">取消</button>
+      <button class="btn" id="fOk">确认登记</button>
+    </div>
+  </div>
+</div>
+
+<footer>
+  军训联队数据回传 · v0.2（M2 填报+签入） · <a id="btnReset">恢复示例名单</a>
+</footer>
+
+<script>
+"use strict";
+/* =========================================================
+ * 军训联队数据回传站 —— 单文件版 v0.2
+ * 口径：人员口径。实到 = 本队自己人出勤（去别队训练也算实到）；
+ *       迁入/迁出不参与出勤勾稽，仅用于总部对账与场地人数核算。
+ * 缺勤(自动) = 应到 − 实到 − 病假 − 事假 − 伤病见习
+ * 场地人数(导出) = 应到 + 迁入 − 迁出
+ * 存储：
+ *   mtr_teams_v1    : [{id, name, expected}]
+ *   mtr_reports_v1  : { date: { teamId: {actual,sick,personal,injured,reporter,ts} } }
+ *   mtr_transfers_v1: { date: [ {id,from,to,count,note,reporter,ts} ] }
+ *   mtr_who_v1 / mtr_who_cur_v1 : 填报人
+ * ========================================================= */
+const LS_TEAMS="mtr_teams_v1",LS_REPORTS="mtr_reports_v1",LS_TRANS="mtr_transfers_v1",
+      LS_WHO="mtr_who_v1",LS_WHOCUR="mtr_who_cur_v1";
+const MANUAL=["actual","sick","personal","injured"];
+const FLABEL={actual:"实到",sick:"病假",personal:"事假",injured:"伤病见习"};
+
+/* ---------- 工具 ---------- */
+const $=id=>document.getElementById(id);
+function todayStr(){return fmtDate(new Date());}
+function fmtDate(d){const p=n=>String(n).padStart(2,"0");return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
+function parseDate(s){const a=s.split("-").map(Number);return new Date(a[0],a[1]-1,a[2]);}
+function shiftDate(s,delta){const d=parseDate(s);d.setDate(d.getDate()+delta);return fmtDate(d);}
+function wdCn(s){return ["周日","周一","周二","周三","周四","周五","周六"][parseDate(s).getDay()];}
+function num(v){const n=parseInt(v,10);return Number.isFinite(n)&&n>=0?n:NaN;}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function csvCell(s){s=String(s??"");return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+function teamName(id){const t=loadTeams().find(x=>x.id===id);return t?t.name:id;}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function nowFmt(){const d=new Date(),p=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());}
+function cssEsc(s){return String(s).replace(/"/g,'\\"');}
+
+/* ---------- 数据层 ---------- */
+function loadTeams(){try{return JSON.parse(localStorage.getItem(LS_TEAMS))||[];}catch(e){return [];}}
+function saveTeams(t){localStorage.setItem(LS_TEAMS,JSON.stringify(t));}
+function loadReports(){try{return JSON.parse(localStorage.getItem(LS_REPORTS))||{};}catch(e){return {};}}
+function saveReports(r){localStorage.setItem(LS_REPORTS,JSON.stringify(r));}
+function dayReport(date){return loadReports()[date]||{};}
+function loadTrans(){try{return JSON.parse(localStorage.getItem(LS_TRANS))||{};}catch(e){return {};}}
+function saveTrans(t){localStorage.setItem(LS_TRANS,JSON.stringify(t));}
+function dayTrans(date){return loadTrans()[date]||[];}
+function loadWho(){try{return JSON.parse(localStorage.getItem(LS_WHO))||[];}catch(e){return [];}}
+function curWho(){return localStorage.getItem(LS_WHOCUR)||"";}
+
+const SEED=[["L01","第1联队",52],["L02","第2联队",50],["L03","第3联队",55],["L04","第4联队",48],
+  ["L05","第5联队",53],["L06","第6联队",50],["L07","第7联队",56],["L08","第8联队",49],
+  ["L09","第9联队",51],["L10","第10联队",54],["L11","第11联队",50],["L12","第12联队",52]];
+function seedTeams(){saveTeams(SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));}
+function getTeam(id){return loadTeams().find(x=>x.id===id)||null;}
+
+/* ---------- 派生 ---------- */
+/* 每队当日：手填四格数值 + 迁出/迁入汇总 + 已填格数 */
+function teamDerived(teamId){
+  const rep=dayReport(curDate)[teamId]||{};
+  const get=v=>{if(v===""||v==null)return 0;const n=parseInt(v,10);return Number.isFinite(n)&&n>=0?n:0;};
+  const filled=MANUAL.filter(f=>String(rep[f]??"").trim()!=="").length;
+  const ts=dayTrans(curDate);
+  const out=ts.filter(t=>t.from===teamId).reduce((a,t)=>a+get(t.count),0);
+  const inn=ts.filter(t=>t.to===teamId).reduce((a,t)=>a+get(t.count),0);
+  return {actual:get(rep.actual),sick:get(rep.sick),personal:get(rep.personal),injured:get(rep.injured),
+          filled,out,inn,rep};
+}
+function expectedOf(teamId){const t=getTeam(teamId);return t?num(t.expected):NaN;}
+/* 缺勤：未开始回传（一格未填）时返回 null（不显示误导数字） */
+function calcAbsent(teamId){
+  const exp=expectedOf(teamId);if(!Number.isFinite(exp))return null;
+  const d=teamDerived(teamId);if(d.filled===0)return null;
+  return exp-d.actual-d.sick-d.personal-d.injured;
+}
+function rowStatus(d){return d.filled>=4?{txt:"已回传",cls:"done"}:d.filled>0?{txt:"部分("+d.filled+"/4)",cls:"part"}:{txt:"待回传",cls:"wait"};}
+/* 超填预警：手填合计 > 应到 */
+function rowOver(teamId){
+  const exp=expectedOf(teamId);if(!Number.isFinite(exp))return false;
+  const d=teamDerived(teamId);
+  return d.filled>0&&(d.actual+d.sick+d.personal+d.injured)>exp;
+}
+
+/* ---------- 状态 ---------- */
+let curDate=todayStr();
+let teams=loadTeams();
+if(!teams.length){seedTeams();teams=loadTeams();}
+
+/* ---------- 行构建 ---------- */
+function rowHtml(t,i){
+  const exp=expectedOf(t.id);
+  const d=teamDerived(t.id);
+  const st=rowStatus(d);
+  const absent=calcAbsent(t.id);
+  const over=Number.isFinite(exp)&&d.filled>0&&(d.actual+d.sick+d.personal+d.injured)>exp;
+  const man=MANUAL.map(f=>{
+    const v=d.rep?d.rep[f]:"";
+    const empty=String(v??"").trim()==="";
+    return "<td class='num'><span class='val"+(empty?" empty":"")+"' data-f='"+f+"' data-team='"+cssEsc(t.id)+"' title='点此填写"+FLABEL[f]+"' role='button'>"+(empty?"–":esc(v))+"</span></td>";
+  }).join("");
+  const absHtml=absent===null
+    ?"<span class='val auto empty' data-f='absent' title='自动计算，回传后显示'>–</span>"
+    :"<span class='val auto"+(absent<0?" neg":"")+"' data-f='absent' title='自动 = 应到 − 实到 − 病假 − 事假 − 伤病见习"+(absent<0?"\n⚠ 填写合计已超过应到！":"")+"'>"+(absent<0?"⚠"+absent:absent)+"</span>";
+  const outHtml=d.out>0?d.out+"<span class='tag' title='签入单自动汇总'>单</span>":"–";
+  const innHtml=d.inn>0?d.inn+"<span class='tag' title='签入单自动汇总'>单</span>":"–";
+  return "<td>"+(i+1)+"</td>"+
+    "<td><b>"+esc(t.id)+"</b> "+esc(t.name)+"</td>"+
+    "<td class='num'><span class='val' data-exp='"+cssEsc(t.id)+"' title='点击修改应到人数' role='button'>"+(Number.isFinite(exp)?exp:"?")+"</span></td>"+
+    man+
+    "<td class='num'>"+absHtml+"</td>"+
+    "<td class='num' title='去其他联队训练人数'>"+outHtml+"</td>"+
+    "<td class='num' title='来本队训练人数'>"+innHtml+"</td>"+
+    "<td>"+(d.rep?.reporter?esc(d.rep.reporter):"<span style='color:#C9CFC9'>–</span>")+"</td>"+
+    "<td><span class='chip "+st.cls+"'>"+st.txt+"</span></td>"+
+    "<td><button class='tbtn small tf-btn' data-id='"+cssEsc(t.id)+"' title='登记：本队有人去其他联队训练'>⇄ 签入</button></td>";
+}
+/* 局部刷新一行（编辑保存后调用，不重建整个表，避免连点丢焦点） */
+function paintRow(teamId){
+  const tr=document.querySelector('#tbody tr[data-tid="'+cssEsc(teamId)+'"]');
+  if(!tr)return;
+  const idx=teams.findIndex(x=>x.id===teamId);
+  if(idx<0){render();return;}
+  tr.className=rowOver(teamId)?"tr-over":"";
+  tr.innerHTML=rowHtml(teams[idx],idx);
+  paintStats();
+}
+function paintStats(){
+  const reps=dayReport(curDate);
+  let expSum=0,trans=0,doneCnt=0;
+  teams.forEach(t=>{
+    const e=expectedOf(t.id);if(Number.isFinite(e))expSum+=e;
+    const d=teamDerived(t.id);trans+=d.inn;
+    const s=rowStatus(d);if(s.cls==="done"||s.cls==="part")doneCnt++;
+  });
+  $("stExpected").textContent=expSum;
+  $("stReported").textContent=doneCnt+"/"+teams.length;
+  $("stRate").textContent=teams.length?(Math.round(doneCnt/teams.length*100)+"%"):"–";
+  $("stTransfer").textContent=trans;
+  $("stTeams").textContent=teams.length;
+  $("teamCount").textContent=teams.length;
+}
+
+/* ---------- 渲染 ---------- */
+function renderDateBar(){
+  $("dateLabel").innerHTML=curDate+(wdCn(curDate)!=="周日"?" · "+wdCn(curDate):"")+"<small>（数据按日留存）</small>";
+  const isToday=curDate===todayStr();
+  $("backToday").style.display=isToday?"none":"";
+  $("todayMark").style.display=isToday?"":"none";
+}
+function renderWho(){
+  const who=loadWho(),cur=curWho();
+  const sel=$("whoSel");sel.innerHTML="";
+  const ph=document.createElement("option");ph.value="";ph.textContent=cur?"👤 "+cur:"👤 填报人：未设置";
+  sel.appendChild(ph);
+  who.forEach(n=>{if(n!==cur){const o=document.createElement("option");o.value=n;o.textContent=n;sel.appendChild(o);}});
+  const add=document.createElement("option");add.value="__new";add.textContent="＋ 新增填报人…";
+  sel.appendChild(add);
+}
+function renderTransList(){
+  const ts=dayTrans(curDate);
+  const ul=$("transList");ul.innerHTML="";
+  $("transCount").textContent=ts.length+" 条";
+  $("transEmpty").style.display=ts.length?"none":"";
+  ts.forEach(t=>{
+    const li=document.createElement("li");
+    li.innerHTML="<span class='flow'>"+esc(teamName(t.from))+" <span class='arrow-x'>→</span> "+esc(teamName(t.to))+"</span>"+
+      "<span class='cnt'>×"+num(t.count)+"</span>"+
+      (t.note?"<span class='note-x'>"+esc(t.note)+"</span>":"")+
+      "<span class='meta'>"+esc(t.reporter?"· "+t.reporter+" ":"")+"· "+esc(t.ts)+"</span>"+
+      "<button class='undo' data-undo='"+t.id+"'>撤销</button>";
+    ul.appendChild(li);
+  });
+}
+function render(){
+  renderDateBar();
+  teams=loadTeams();
+  const tbody=$("tbody");tbody.innerHTML="";
+  const empty=!teams.length;
+  $("emptyBox").style.display=empty?"":"none";
+  $("tipBox").style.display=empty?"none":"";
+  if(empty){paintStats();renderTransList();return;}
+  teams.forEach((t,i)=>{
+    const tr=document.createElement("tr");
+    tr.dataset.tid=t.id;
+    tr.className=rowOver(t.id)?"tr-over":"";
+    tr.innerHTML=rowHtml(t,i);
+    tbody.appendChild(tr);
+  });
+  paintStats();
+  renderTransList();
+}
+
+/* ---------- 单元格编辑 ---------- */
+function openEditor(span){
+  const f=span.dataset.f;if(!f||span.querySelector("input"))return;
+  const tr=span.closest("tr");const teamId=tr&&tr.dataset.tid;if(!teamId)return;
+  const rep=dayReport(curDate)[teamId]||{};
+  const old=String(rep[f]??"");
+  span.innerHTML="<input type='number' min='0' step='1' inputmode='numeric' aria-label='"+FLABEL[f]+"'>";
+  const inp=span.querySelector("input");
+  inp.value=old;
+  inp.focus();inp.select();
+  let done=false;
+  function commit(){
+    if(done)return;done=true;
+    const v=inp.value.trim();
+    const all=loadReports();const day=all[curDate]||{};const cur=day[teamId]||{};
+    if(v===""){delete cur[f];}
+    else{const n=parseInt(v,10);if(Number.isFinite(n)&&n>=0){cur[f]=String(n);cur.reporter=curWho()||cur.reporter||"";cur.ts=nowFmt();}}
+    if(Object.keys(cur).length)day[teamId]=cur;else delete day[teamId];
+    all[curDate]=day;saveReports(all);
+    paintRow(teamId);
+  }
+  function cancel(){if(!done){done=true;render();}}
+  inp.addEventListener("blur",commit);
+  inp.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){e.preventDefault();inp.blur();}
+    else if(e.key==="Escape")cancel();
+  });
+}
+function editExpected(teamId){
+  const t=getTeam(teamId);if(!t)return;
+  const v=prompt("修改 "+t.name+" 的应到人数：",expectedOf(teamId)||"");
+  if(v==null)return;
+  const n=parseInt(v,10);if(Number.isFinite(n)&&n>=0){t.expected=n;saveTeams(loadTeams().map(x=>x.id===teamId?t:x));paintRow(teamId);}
+}
+
+/* ---------- CSV ---------- */
+function parseCSV(text){
+  const rows=[];let row=[],cell="",inQ=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(inQ){if(c==='"'){if(text[i+1]==='"'){cell+='"';i++;}else inQ=false;}else cell+=c;}
+    else if(c==='"')inQ=true;
+    else if(c===","){row.push(cell);cell="";}
+    else if(c==="\n"){row.push(cell);if(row.some(x=>x.trim()!==""))rows.push(row);row=[];cell="";}
+    else if(c!=="\r")cell+=c;
+  }
+  if(cell!==""||row.length){row.push(cell);if(row.some(x=>x.trim()!==""))rows.push(row);}
+  return rows;
+}
+async function readFileText(file){
+  const bytes=new Uint8Array(await file.arrayBuffer());
+  let text=null;
+  try{text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);}catch(e){}
+  if(text===null)text=new TextDecoder("gbk").decode(bytes);
+  return text.replace(/^\uFEFF/,"");
+}
+function pickHeader(rows,keys){
+  if(!rows.length)return-1;
+  const hdr=rows[0].map(h=>String(h).trim().toLowerCase());
+  for(const k of keys){const i=hdr.findIndex(h=>h.includes(k));if(i>=0)return i;}
+  return-1;
+}
+function importTeams(file){
+  readFileText(file).then(text=>{
+    const rows=parseCSV(text);
+    if(rows.length<2){alert("文件里没有数据行（需要表头 + 至少一行联队）");return;}
+    const iId=pickHeader(rows,["联队编号","编号","id"]);
+    const iName=pickHeader(rows,["联队名称","名称","联队名","name"]);
+    const iExp=pickHeader(rows,["应到","人数","应到人数","expected"]);
+    if(iId<0&&iName<0){alert("没识别到「联队编号/联队名称」列，请使用模板格式");return;}
+    const out=[];
+    for(let r=1;r<rows.length;r++){
+      const row=rows[r];if(!row.length)continue;
+      const id=(iId>=0?String(row[iId]??""):"").trim()||String(r).padStart(2,"0");
+      const name=(iName>=0?String(row[iName]??""):"").trim()||id;
+      const exp=iExp>=0?num(row[iExp]):0;
+      if(!id&&!name)continue;
+      out.push({id,name,expected:Number.isFinite(exp)?exp:0});
+    }
+    if(!out.length){alert("解析后没有有效联队行");return;}
+    if(confirm("将用导入名单替换当前 "+teams.length+" 个联队？\n（导入 "+out.length+" 个，已有日报/签入数据不受影响）")){
+      saveTeams(out);render();alert("✅ 导入成功："+out.length+" 个联队");
+    }
+  }).catch(e=>alert("读取文件失败："+e.message));
+}
+function download(filename,content){
+  const blob=new Blob(["\uFEFF"+content],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},200);
+}
+function exportDaily(){
+  const reps=dayReport(curDate);
+  const lines=["联队编号,联队名称,应到,实到,病假,事假,伤病见习,缺勤,迁出,迁入,场地人数,填报人,填报时间,回传状态"];
+  teams.forEach(t=>{
+    const d=teamDerived(t.id);
+    const exp=expectedOf(t.id);
+    const absent=calcAbsent(t.id);
+    const st=rowStatus(d);
+    const site=(Number.isFinite(exp)?exp:0)+d.inn-d.out;
+    const row=[t.id,t.name,Number.isFinite(exp)?exp:"",
+      d.rep?.actual??"",d.rep?.sick??"",d.rep?.personal??"",d.rep?.injured??"",
+      absent===null?"":absent,
+      d.out||"",d.inn||"",
+      d.filled>0?site:"",
+      d.rep?.reporter??"",d.rep?.ts??"",st.txt];
+    lines.push(row.map(csvCell).join(","));
+  });
+  download("军训联队日报_"+curDate+".csv",lines.join("\r\n"));
+}
+function exportTrans(){
+  const ts=dayTrans(curDate);
+  const lines=["序号,迁出联队,迁入联队,人数,备注,登记人,登记时间"];
+  ts.forEach((t,i)=>{
+    lines.push([i+1,teamName(t.from),teamName(t.to),num(t.count),t.note||"",t.reporter||"",t.ts].map(csvCell).join(","));
+  });
+  download("军训联队签入明细_"+curDate+".csv",lines.join("\r\n"));
+}
+function exportTemplate(){
+  download("军训联队名单模板.csv",["联队编号,联队名称,应到人数","L01,第1联队,52","L02,第2联队,50","L03,第3联队,55"].join("\r\n"));
+}
+
+/* ---------- 签入登记 ---------- */
+function openModal(presetFrom){
+  fillTeamSelect("fFrom");fillTeamSelect("fTo");
+  $("fCnt").value=1;$("fNote").value="";
+  const from=$("fFrom"),to=$("fTo");
+  if(presetFrom)from.value=presetFrom;
+  syncToOptions(from,to);
+  $("mask").classList.add("show");
+  setTimeout(()=>from.focus(),50);
+}
+function syncToOptions(from,to){
+  [...to.options].forEach(o=>o.disabled=false);
+  if(from.value)[...to.options].forEach(o=>{if(o.value===from.value)o.disabled=true;});
+  if(to.value===from.value||to.selectedOptions[0]?.disabled){
+    const first=[...to.options].find(o=>!o.disabled);
+    if(first)to.value=first.value;
+  }
+}
+function fillTeamSelect(selId){
+  const sel=$(selId);sel.innerHTML="";
+  teams.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.id+" · "+t.name;sel.appendChild(o);});
+}
+function doAddTrans(){
+  const from=$("fFrom").value,to=$("fTo").value,cnt=parseInt($("fCnt").value,10);
+  if(!from||!to||from===to){alert("请选择两个不同的联队");return;}
+  if(!Number.isFinite(cnt)||cnt<1){alert("人数须为 ≥1 的整数");return;}
+  const all=loadTrans();const day=all[curDate]||[];
+  day.push({id:uid(),from,to,count:String(cnt),note:$("fNote").value.trim(),reporter:curWho()||"",ts:nowFmt()});
+  all[curDate]=day;saveTrans(all);
+  $("mask").classList.remove("show");
+  render();
+}
+function undoTrans(id){
+  const all=loadTrans();const day=all[curDate]||[];
+  const t=day.find(x=>x.id===id);if(!t)return;
+  if(!confirm("撤销签入单："+teamName(t.from)+" → "+teamName(t.to)+" ×"+num(t.count)+" ？"))return;
+  all[curDate]=day.filter(x=>x.id!==id);saveTrans(all);render();
+}
+
+/* ---------- 事件 ---------- */
+$("prevDay").onclick=()=>{curDate=shiftDate(curDate,-1);render();};
+$("nextDay").onclick=()=>{curDate=shiftDate(curDate,1);render();};
+$("backToday").onclick=()=>{curDate=todayStr();render();};
+$("btnTemplate").onclick=exportTemplate;
+$("btnExportDaily").onclick=exportDaily;
+$("btnTransExport").onclick=exportTrans;
+$("btnImportTeams").onclick=()=>$("fileTeams").click();
+$("fileTeams").onchange=e=>{if(e.target.files[0])importTeams(e.target.files[0]);e.target.value="";};
+$("btnReset").onclick=()=>{if(confirm("恢复示例名单？将覆盖当前名单（日报/签入数据保留）。")){seedTeams();render();}};
+$("btnAddTeam").onclick=()=>{
+  const id=prompt("联队编号（如 L13）：");if(id==null)return;
+  const nm=prompt("联队名称（如 第13联队）：");if(nm==null)return;
+  const exp=prompt("应到人数：","50");
+  const t=loadTeams();t.push({id:id.trim()||"T"+Date.now(),name:nm.trim()||id.trim(),expected:Number.isFinite(num(exp))?num(exp):0});
+  saveTeams(t);render();
+};
+$("btnClearDay").onclick=()=>{
+  if(!confirm("清空 "+curDate+" 的日报回传数据？（签入登记保留）"))return;
+  const all=loadReports();delete all[curDate];saveReports(all);render();
+};
+$("btnTransAdd").onclick=()=>openModal(null);
+$("fCancel").onclick=()=>$("mask").classList.remove("show");
+$("fOk").onclick=doAddTrans;
+$("mask").addEventListener("click",e=>{if(e.target===$("mask"))$("mask").classList.remove("show");});
+$("fFrom").addEventListener("change",()=>syncToOptions($("fFrom"),$("fTo")));
+$("whoSel").onchange=e=>{
+  const v=e.target.value;
+  if(v==="__new"){
+    const nm=prompt("输入填报人姓名：");if(nm==null||!nm.trim()){renderWho();return;}
+    const who=loadWho();if(!who.includes(nm.trim()))who.push(nm.trim());
+    localStorage.setItem(LS_WHO,JSON.stringify(who));
+    localStorage.setItem(LS_WHOCUR,nm.trim());
+  }else if(v){localStorage.setItem(LS_WHOCUR,v);}
+  renderWho();
+};
+document.addEventListener("click",e=>{
+  const tf=e.target.closest(".tf-btn");
+  if(tf){openModal(tf.dataset.id);return;}
+  const un=e.target.closest(".undo");
+  if(un){undoTrans(un.dataset.undo);return;}
+  const ex=e.target.closest("[data-exp]");
+  if(ex){editExpected(ex.dataset.exp);return;}
+  const v=e.target.closest(".val[data-f]");
+  if(v){
+    if(v.dataset.f==="absent")return;
+    let span=v;
+    if(!span.isConnected){   // 上格保存触发整行重绘，本格已被替换 → 定位到新节点继续编辑
+      const tr=v.closest("tr"),tid=tr&&tr.dataset.tid,f=v.dataset.f;
+      if(tid)span=document.querySelector('#tbody tr[data-tid="'+cssEsc(tid)+'"] .val[data-f="'+f+'"]');
+    }
+    if(span)openEditor(span);
+    return;
+  }
+});
+
+/* ---------- init ---------- */
+renderWho();
+render();
+</script>
+</body>
+</html>
