@@ -343,7 +343,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.8（实时互通 ☁） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.8.1（双域名容灾 ☁） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -364,8 +364,9 @@ const LS_TEAMS="mtr_teams_v1",LS_REPORTS="mtr_reports_v1",LS_TRANS="mtr_transfer
       LS_SUBMIT="mtr_submitlog_v1",LS_INBOX="mtr_inbox_v1",
       LS_ROSTER="mtr_rosters_v1",LS_ROLL="mtr_rollcall_v1",
       LS_CLOUDADM="mtr_cloud_admins_v1";
-const CLOUD_API="https://mtapi.lijiahao521.top";   // 云端同步接口（Cloudflare Worker）
+const CLOUD_HOSTS=["https://mtdata.lijiahao521.top","https://mtapi.lijiahao521.top"];  // 云端接口（双域名自动切换）
 const CLOUD_PASS="mt-sync-2026";                   // 与 Worker 侧一致的接口口令（防误写）
+const LS_CLOUDHOST="mtr_cloud_host";               // 记住最近可用域名，避免每次都从第一个试
 const SUBMIT_FMT="mt-report-submit",SUBMIT_VER=1;
 const MANUAL=["actual","sick","personal","injured"];
 const FLABEL={actual:"实到",sick:"病假",personal:"事假",injured:"伤病见习"};
@@ -815,14 +816,23 @@ function setCloudUI(txt,cls){
   el.title=cls==="off"&&cloudErr?("失败原因："+cloudErr):(cls==="ok"?("最近同步 "+nowFmt()+" · 点此手动同步"):"云端自动同步状态 · 点此手动同步");
 }
 async function cloudCall(path,qs,opts){
-  try{
-    const res=await fetch(CLOUD_API+path+(qs||""),{
-      method:(opts&&opts.method)||"GET",
-      headers:{"X-Pass":CLOUD_PASS,...((opts&&opts.body)?{"Content-Type":"application/json"}:{})},
-      body:(opts&&opts.body)?JSON.stringify(opts.body):undefined});
-    if(!res.ok){cloudErr="HTTP "+res.status;return null;}
-    return await res.json();
-  }catch(e){cloudErr=e.name+": "+e.message;return null;}
+  const remembered=localStorage.getItem(LS_CLOUDHOST);
+  const hosts=remembered&&CLOUD_HOSTS.includes(remembered)?[remembered,...CLOUD_HOSTS.filter(h=>h!==remembered)]:CLOUD_HOSTS;
+  for(const base of hosts){
+    try{
+      const ctl=new AbortController();const timer=setTimeout(()=>ctl.abort(),7000);
+      const res=await fetch(base+path+(qs||""),{
+        method:(opts&&opts.method)||"GET",
+        headers:{"X-Pass":CLOUD_PASS,...((opts&&opts.body)?{"Content-Type":"application/json"}:{})},
+        body:(opts&&opts.body)?JSON.stringify(opts.body):undefined,
+        signal:ctl.signal});
+      clearTimeout(timer);
+      if(!res.ok){cloudErr=base+" HTTP "+res.status;continue;}
+      localStorage.setItem(LS_CLOUDHOST,base);   // 记住可用域名
+      return await res.json();
+    }catch(e){cloudErr=e.name+": "+e.message;continue;}
+  }
+  return null;
 }
 /* 拉取某日云端全量 → 合并本地（日报同队取新、签入按来源替换）；admins 状态存快照 */
 async function syncFromCloud(date,manual){
