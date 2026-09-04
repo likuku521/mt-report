@@ -106,6 +106,27 @@
   .admin-item:last-child{border-bottom:none}
   .admin-item .sp{margin-left:auto;display:flex;gap:6px}
   .hint2{font-size:12px;color:var(--sub);margin:8px 0 4px}
+  /* 花名册点名 */
+  .roll-head{position:sticky;top:0;background:#fff;z-index:3;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:6px}
+  .roll-prog{display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:13px;margin-bottom:8px}
+  .roll-prog .bar{flex:1;min-width:120px;height:8px;border-radius:99px;background:#E5E7EB;overflow:hidden}
+  .roll-prog .bar i{display:block;height:100%;background:var(--green);transition:width .2s}
+  .rc-row{display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px dashed #EEF1EE;flex-wrap:wrap}
+  .rc-row .nm{font-size:14px;font-weight:600;min-width:110px}
+  .rc-chips{display:flex;gap:5px;flex-wrap:wrap}
+  .rc-chip{border:1px solid var(--line);background:#fff;color:var(--sub);border-radius:999px;padding:3px 10px;font-size:12.5px;cursor:pointer;user-select:none}
+  .rc-chip.on-ok{background:#DCFCE7;border-color:#16A34A;color:#166534;font-weight:700}
+  .rc-chip.on-sick{background:#FEF3C7;border-color:#F59E0B;color:#92400E;font-weight:700}
+  .rc-chip.on-per{background:#FEF3C7;border-color:#F59E0B;color:#92400E;font-weight:700}
+  .rc-chip.on-inj{background:#FFEDD5;border-color:#F97316;color:#9A3412;font-weight:700}
+  .rc-chip.on-abs{background:#FEE2E2;border-color:#EF4444;color:#991B1B;font-weight:700}
+  .rc-chip.on-away{background:#E0F2FE;border-color:#0EA5E9;color:#075985;font-weight:700}
+  .rc-chip.picked{border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
+  .rc-away-sel{border:1px solid var(--green);border-radius:8px;padding:3px 6px;font-size:12.5px;background:#fff;color:var(--txt)}
+  .roll-actions{position:sticky;bottom:0;background:#fff;padding:10px 0 2px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .roll-filter{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--sub)}
+  .roll-empty{color:var(--sub);font-size:13px;padding:20px 0;text-align:center}
+  .modal-xl{max-width:640px;width:100%}
   footer{color:var(--sub);font-size:12px;text-align:center;padding:16px 0 30px}
   footer a{color:var(--grey);cursor:pointer;text-decoration:underline}
   .tbl-scroll{overflow-x:auto}
@@ -161,6 +182,9 @@
       <button class="tbtn primary" id="btnSubmit" style="display:none" title="把名下已填数据打包成回传文件，发给超级管理员">📤 回传数据</button>
       <button class="tbtn" id="btnInbox" style="display:none" title="接收管理员发来的回传文件并合并">📥 接收回传</button>
       <input type="file" id="fileSubmit" accept=".json,.mtreport,application/json" hidden>
+      <button class="tbtn" id="btnRosterTpl" title="下载花名册模板：联队编号+姓名">🧾 花名册模板</button>
+      <button class="tbtn" id="btnRosterImport" title="导入人员花名册（会按联队更新应到人数）">📥 导入花名册</button>
+      <input type="file" id="fileRoster" accept=".csv,.txt" hidden>
       <span class="submit-state no" id="mySubmitState" style="display:none"></span>
       <span class="legend" style="margin-left:auto">
         <span>🟢 <b>已回传</b></span><span>🟡 部分</span><span>⚪ 待回传</span>
@@ -194,7 +218,7 @@
       当前管理员名下没有分配联队。<br>请联系超级管理员在「⚙ 管理员」里给你分配。
     </div>
     <div class="tip" id="tipBox">
-      💡 <b>填报</b>：点「实到 / 病假 / 事假 / 伤病见习」的 <b>–</b> 直接输入数字，回车或点别处保存。缺勤自动算。<br>
+      💡 <b>填报</b>：点「✏ 点名」按花名册逐人核对 → 自动写入日报；也可直接点「实到/病假/…」的 <b>–</b> 手填数字。缺勤自动算。<br>
       📤 <b>回传</b>：普通管理员填完点「回传数据」→ 生成回传文件 → 发给超级管理员；超管点「接收回传」导入合并（云端自动同步后续开通）。<br>
       👤 <b>身份</b>：普通管理员只看/填报自己负责的联队；超级管理员看全部、负责收齐统计。<br>
       ⇄ <b>跨队签入</b>：队员去其他联队训练 → 该行「⇄ 签入」或下方「＋ 登记签入」。<br>
@@ -267,8 +291,30 @@
   </div>
 </div>
 
+<!-- 花名册点名弹窗 -->
+<div class="mask" id="maskRoll">
+  <div class="modal modal-xl">
+    <div class="roll-head">
+      <h3 id="rollTitle" style="margin-bottom:6px">✏ 花名册点名</h3>
+      <div class="roll-prog">
+        <span id="rollCount"></span>
+        <span class="bar"><i id="rollBar"></i></span>
+        <span class="roll-filter">🔍 <input type="text" id="rollSearch" placeholder="搜姓名…" style="border:1px solid var(--line);border-radius:8px;padding:4px 8px;width:110px;font-size:12.5px"> <label style="display:flex;gap:4px;align-items:center"><input type="checkbox" id="rollOnlyBad">仅看异常</label></span>
+      </div>
+      <div style="font-size:12px;color:var(--sub)">每人都要点一个状态（到场=默认；病假/事假/伤病见习/缺勤/去他队）。点「去他队」后选目标联队。</div>
+    </div>
+    <div id="rollList" style="max-height:52vh;overflow:auto"></div>
+    <div class="roll-actions">
+      <div style="font-size:12.5px" id="rollLive"></div>
+      <span class="spacer"></span>
+      <button class="btn plain" id="rollCancel">关闭</button>
+      <button class="btn" id="rollSave" disabled>保存到当日日报</button>
+    </div>
+  </div>
+</div>
+
 <footer>
-  军训联队数据回传 · v0.4（回传闭环+超管统计） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.5（花名册点名） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -286,7 +332,8 @@
  * ========================================================= */
 const LS_TEAMS="mtr_teams_v1",LS_REPORTS="mtr_reports_v1",LS_TRANS="mtr_transfers_v1",
       LS_ADMINS="mtr_admins_v1",LS_ADMINCUR="mtr_admin_cur",
-      LS_SUBMIT="mtr_submitlog_v1",LS_INBOX="mtr_inbox_v1";
+      LS_SUBMIT="mtr_submitlog_v1",LS_INBOX="mtr_inbox_v1",
+      LS_ROSTER="mtr_rosters_v1",LS_ROLL="mtr_rollcall_v1";
 const SUBMIT_FMT="mt-report-submit",SUBMIT_VER=1;
 const MANUAL=["actual","sick","personal","injured"];
 const FLABEL={actual:"实到",sick:"病假",personal:"事假",injured:"伤病见习"};
@@ -324,6 +371,12 @@ function saveSubmit(s){localStorage.setItem(LS_SUBMIT,JSON.stringify(s));}
 function loadInbox(){try{return JSON.parse(localStorage.getItem(LS_INBOX))||{};}catch(e){return {};}}
 function saveInbox(s){localStorage.setItem(LS_INBOX,JSON.stringify(s));}
 function dayInbox(date){return loadInbox()[date]||[];}
+function loadRoster(){try{return JSON.parse(localStorage.getItem(LS_ROSTER))||{};}catch(e){return {};}}
+function saveRoster(r){localStorage.setItem(LS_ROSTER,JSON.stringify(r));}
+function rosterOf(teamId){return loadRoster()[teamId]||[];}
+function loadRoll(){try{return JSON.parse(localStorage.getItem(LS_ROLL))||{};}catch(e){return {};}}
+function saveRoll(r){localStorage.setItem(LS_ROLL,JSON.stringify(r));}
+function dayRoll(date){return loadRoll()[date]||{};}
 
 const TEAM_SEED=[["L01","第1联队",52],["L02","第2联队",50],["L03","第3联队",55],["L04","第4联队",48],
   ["L05","第5联队",53],["L06","第6联队",50],["L07","第7联队",56],["L08","第8联队",49],
@@ -332,8 +385,19 @@ const ADMIN_SEED=[
   {name:"超级管理员",role:"super",teams:[]},
   {name:"张三",role:"admin",teams:["L01","L02"]},
   {name:"李四",role:"admin",teams:["L03","L04"]}];
-function seedAll(){saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));saveAdmins(ADMIN_SEED);}
-function seedTeams(){saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));}
+function seedRosters(){
+  const all=loadRoster();
+  TEAM_SEED.forEach(([id,,n])=>{
+    if(!all[id]||!all[id].length){
+      const cnt=num(n);const arr=[];
+      for(let i=1;i<=cnt;i++)arr.push({pid:i,name:"学员"+String(i).padStart(2,"0")});
+      all[id]=arr;
+    }
+  });
+  saveRoster(all);
+}
+function seedAll(){saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));saveAdmins(ADMIN_SEED);seedRosters();}
+function seedTeams(){saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));seedRosters();}
 function getTeam(id){return loadTeams().find(x=>x.id===id)||null;}
 
 /* ---------- 管理员 / 可见范围 ---------- */
@@ -358,7 +422,11 @@ function teamDerived(teamId){
   return {actual:get(rep.actual),sick:get(rep.sick),personal:get(rep.personal),injured:get(rep.injured),
           filled,out,inn,rep};
 }
-function expectedOf(teamId){const t=getTeam(teamId);return t?num(t.expected):NaN;}
+function expectedOf(teamId){
+  const roster=rosterOf(teamId);
+  if(roster&&roster.length)return roster.length;   // 有花名册 → 应到=名单人数
+  const t=getTeam(teamId);return t?num(t.expected):NaN;
+}
 function calcAbsent(teamId){
   const exp=expectedOf(teamId);if(!Number.isFinite(exp))return null;
   const d=teamDerived(teamId);if(d.filled===0)return null;
@@ -400,7 +468,7 @@ function rowHtml(t,i){
     "<td class='num' title='来本队训练人数'>"+innHtml+"</td>"+
     "<td>"+(d.rep?.reporter?esc(d.rep.reporter):"<span style='color:#C9CFC9'>–</span>")+"</td>"+
     "<td><span class='chip "+st.cls+"'>"+st.txt+"</span></td>"+
-    "<td><button class='tbtn small tf-btn' data-id='"+cssEsc(t.id)+"' title='登记：本队有人去其他联队训练'>⇄ 签入</button></td>";
+    "<td style='white-space:nowrap'><button class='tbtn small rc-btn' data-id='"+cssEsc(t.id)+"' title='打开本联队花名册点名核对'>✏ 点名</button> <button class='tbtn small tf-btn' data-id='"+cssEsc(t.id)+"' title='登记：本队有人去其他联队训练'>⇄ 签入</button></td>";
 }
 function paintRow(teamId){
   const tr=document.querySelector('#tbody tr[data-tid="'+cssEsc(teamId)+'"]');
@@ -580,6 +648,7 @@ function openEditor(span){
 function editExpected(teamId){
   if(!canSeeTeam(teamId))return;
   const t=getTeam(teamId);if(!t)return;
+  if(rosterOf(teamId).length){alert("该联队已有花名册，「应到」=名单人数，请通过「导入花名册」调整名单。");return;}
   const v=prompt("修改 "+t.name+" 的应到人数：",expectedOf(teamId)||"");
   if(v==null)return;
   const n=parseInt(v,10);if(Number.isFinite(n)&&n>=0){t.expected=n;saveTeams(loadTeams().map(x=>x.id===teamId?t:x));paintRow(teamId);}
@@ -690,6 +759,145 @@ function exportTrans(){
 }
 function exportTemplate(){
   download("军训联队名单模板.csv",["联队编号,联队名称,应到人数","L01,第1联队,52","L02,第2联队,50","L03,第3联队,55"].join("\r\n"));
+}
+
+/* ---------- 花名册：模板/导入 ---------- */
+function rosterTpl(){
+  download("花名册模板.csv",["联队编号,姓名,学号(可选)","L01,王小明,2026010101","L01,李大力,2026010102","L02,赵一诺,2026020101","L02,钱多多,2026020102"].join("\r\n"));
+}
+function importRosterFile(file){
+  readFileText(file).then(text=>{
+    const rows=parseCSV(text);
+    if(rows.length<2){alert("文件里没有数据行");return;}
+    const iTeam=pickHeader(rows,["联队编号","编号","联队","队","id"]);
+    const iName=pickHeader(rows,["姓名","名字","name"]);
+    if(iName<0){alert("没找到「姓名」列 —— 花名册需包含：联队编号,姓名[,学号]");return;}
+    const out={};let line=0,skipped=0;
+    for(let r=1;r<rows.length;r++){
+      const row=rows[r];if(!row.length)continue;
+      const team=String((iTeam>=0?row[iTeam]:"")??"").trim();
+      const name=String(row[iName]??"").trim();
+      if(!name){skipped++;continue;}
+      if(!team){skipped++;continue;}
+      const t=loadTeams().find(x=>x.id===team||x.name===team);
+      const tid=t?t.id:team;
+      (out[tid]=out[tid]||[]).push({pid:out[tid]?out[tid].length+1:1,name});
+      line++;
+    }
+    if(!line){alert("没有解析到任何人员（跳过 "+skipped+" 行）");return;}
+    const affected=Object.keys(out).length;
+    if(!confirm("将写入 "+affected+" 个联队花名册、共 "+line+" 人。\n"+(skipped?"跳过 "+skipped+" 行无姓名/无联队行。\n":"")+"已存在名单的联队会被替换，「应到」自动等于名单人数。\n继续？"))return;
+    const existing=loadRoster();Object.assign(existing,out);saveRoster(existing);
+    render();alert("✅ 花名册导入成功："+line+" 人 / "+affected+" 队");
+  }).catch(e=>alert("读取失败："+e.message));
+}
+
+/* ---------- 花名册点名 ---------- */
+const RST={ok:{t:"到场",c:"on-ok"},sick:{t:"病假",c:"on-sick"},personal:{t:"事假",c:"on-per"},
+  injured:{t:"伤病",c:"on-inj"},absent:{t:"缺勤",c:"on-abs"},away:{t:"去他队",c:"on-away"}};
+const RORD=["ok","sick","personal","injured","absent","away"];
+let rollTeam=null,rollFilterBad=false,rollKW="";
+
+function rollState(teamId){return (dayRoll(curDate)[teamId])||{};}
+function saveRollState(teamId,st){const all=loadRoll();const day=all[curDate]||{};day[teamId]=st;all[curDate]=day;saveRoll(all);}
+function openRoll(teamId){
+  rollTeam=teamId;
+  const t=getTeam(teamId);
+  const roster=rosterOf(teamId);
+  $("rollTitle").textContent="✏ 花名册点名 · "+t.id+" "+t.name+(roster.length?"（应到 "+roster.length+" 人）":"（暂无名单）");
+  $("rollSearch").value="";rollKW="";$("rollOnlyBad").checked=false;rollFilterBad=false;
+  $("maskRoll").classList.add("show");
+  renderRoll();
+}
+function closeRoll(){$("maskRoll").classList.remove("show");rollTeam=null;}
+function rollSummary(st){
+  const c={};RORD.forEach(k=>c[k]=0);
+  Object.values(st).forEach(v=>{const s=v&&v.st;if(c[s]!==undefined)c[s]++;});
+  return c;
+}
+function renderRoll(){
+  if(!rollTeam)return;
+  const roster=rosterOf(rollTeam);
+  const st=rollState(rollTeam);
+  const total=roster.length;
+  const confirmed=Object.keys(st).length;
+  const c=rollSummary(st);
+  const list=$("rollList");list.innerHTML="";
+  if(!total){list.innerHTML="<div class='roll-empty'>本联队还没有花名册。<br>请点表格上方「花名册模板」下载模板填写，再点「📥 导入花名册」。</div>";
+    $("rollCount").textContent="应到 0";$("rollBar").style.width="0%";
+    $("rollLive").textContent="";$("rollSave").disabled=true;return;}
+  $("rollCount").innerHTML="已确认 <b>"+confirmed+"</b>/"+total;
+  $("rollBar").style.width=(confirmed/total*100)+"%";
+  $("rollLive").innerHTML="到场 <b>"+c.ok+"</b> · 去他队 <b>"+c.away+"</b> · 病假 <b>"+c.sick+"</b> · 事假 <b>"+c.personal+"</b> · 伤病 <b>"+c.injured+"</b> · 缺勤 <b>"+c.absent+"</b>";
+  $("rollSave").disabled=confirmed<total;
+  const badOnly=rollFilterBad,kw=rollKW.trim();
+  const others=loadTeams().filter(x=>x.id!==rollTeam);
+  roster.forEach(p=>{
+    const cur=st[p.pid]||{};
+    const isBad=cur.st&&cur.st!=="ok";
+    if(badOnly&&!isBad)return;
+    if(kw&&!String(p.name).includes(kw))return;
+    const row=document.createElement("div");row.className="rc-row";row.dataset.pid=p.pid;
+    const nm=document.createElement("span");nm.className="nm";nm.textContent=p.name;
+    row.appendChild(nm);
+    const chips=document.createElement("span");chips.className="rc-chips";
+    RORD.forEach(k=>{
+      const b=document.createElement("button");b.type="button";b.className="rc-chip"+(cur.st===k?" picked ":"")+(cur.st===k?RST[k].c:"");
+      b.dataset.st=k;b.textContent=RST[k].t;
+      if(cur.st===k&&k==="away"){b.textContent+="→"+(cur.to?teamName(cur.to):"?");}
+      chips.appendChild(b);
+    });
+    row.appendChild(chips);
+    if(cur.st==="away"){
+      const sel=document.createElement("select");sel.className="rc-away-sel";
+      others.forEach(o=>{const op=document.createElement("option");op.value=o.id;op.textContent=o.id+" "+o.name;sel.appendChild(op);});
+      if(cur.to&&others.some(o=>o.id===cur.to))sel.value=cur.to;
+      sel.onchange=()=>{const s2=rollState(rollTeam);s2[p.pid]={st:"away",to:sel.value};saveRollState(rollTeam,s2);renderRoll();};
+      row.appendChild(sel);
+    }
+    list.appendChild(row);
+  });
+  if(!list.children.length)list.innerHTML="<div class='roll-empty'>没有符合筛选的人。</div>";
+}
+function setPerson(pid,st){
+  const team=rollTeam;if(!team)return;
+  const cur=rollState(team);
+  cur[pid]=cur[pid]||{};
+  if(st==="away"){
+    if(cur[pid].st==="away"){delete cur[pid];}        // 再点取消
+    else{cur[pid]={st:"away",to:firstOtherTeam(team)};}
+  }else{
+    if(cur[pid].st===st)delete cur[pid];              // 再点取消（可返回未确认）
+    else cur[pid]={st:st};
+  }
+  if(!cur[pid].st)delete cur[pid];
+  saveRollState(team,cur);
+  renderRoll();
+}
+function firstOtherTeam(teamId){const o=loadTeams().find(x=>x.id!==teamId);return o?o.id:"";}
+function rollSave(){
+  const team=rollTeam;if(!team)return;
+  const roster=rosterOf(team);
+  const st=rollState(team);
+  if(Object.keys(st).length<roster.length){alert("还有 "+(roster.length-Object.keys(st).length)+" 人未点名，全部点完才能保存。");return;}
+  const c=rollSummary(st);
+  const actual=c.ok+c.away;                 // 人员口径：去他队仍在训 → 计入实到
+  const all=loadReports();const day=all[curDate]||{};
+  day[team]={actual:String(actual),sick:String(c.sick),personal:String(c.personal),injured:String(c.injured),
+    reporter:curAdminName()||"",ts:nowFmt(),_roll:true};
+  all[curDate]=day;saveReports(all);
+  // 签入单聚合：先清空 from=本队 的当日单，再按「去他队」人数生成
+  const transAll=loadTrans();const dayT=(transAll[curDate]||[]).filter(x=>x.from!==team);
+  const byTo={};
+  Object.values(st).forEach(v=>{if(v.st==="away"&&v.to){byTo[v.to]=(byTo[v.to]||0)+1;}});
+  Object.entries(byTo).forEach(([to,cnt])=>{
+    dayT.push({id:uid(),from:team,to,count:String(cnt),note:"点名生成",reporter:curAdminName()||"",ts:nowFmt(),_src:curAdminName()||"",_roll:true});
+  });
+  if(dayT.length)transAll[curDate]=dayT;else delete transAll[curDate];
+  saveTrans(transAll);
+  closeRoll();
+  render();
+  alert("✅ 已按点名写入当日日报：实到 "+actual+"（到场 "+c.ok+" + 去他队 "+c.away+"）· 病假 "+c.sick+" · 事假 "+c.personal+" · 伤病 "+c.injured+" · 缺勤 "+c.absent+(c.away?"\n已自动生成签入单。":""));
 }
 
 /* ---------- 回传数据（生成回传包）+ 接收合并 ---------- */
@@ -935,6 +1143,10 @@ $("fOk").onclick=doAddTrans;
 $("mask").addEventListener("click",e=>{if(e.target===$("mask"))$("mask").classList.remove("show");});
 $("fFrom").addEventListener("change",()=>syncToOptions($("fFrom"),$("fTo")));
 document.addEventListener("click",e=>{
+  const rc=e.target.closest(".rc-btn");
+  if(rc){openRoll(rc.dataset.id);return;}
+  const rcc=e.target.closest("#rollList .rc-chip");
+  if(rcc){const row=rcc.closest(".rc-row");if(row)setPerson(row.dataset.pid,rcc.dataset.st);return;}
   const tf=e.target.closest(".tf-btn");
   if(tf){if(!canSeeTeam(tf.dataset.id))return;openModal(tf.dataset.id);return;}
   const un=e.target.closest(".undo");
@@ -953,6 +1165,15 @@ document.addEventListener("click",e=>{
     return;
   }
 });
+
+$("btnRosterTpl").onclick=rosterTpl;
+$("btnRosterImport").onclick=()=>$("fileRoster").click();
+$("fileRoster").onchange=e=>{if(e.target.files[0])importRosterFile(e.target.files[0]);e.target.value="";};
+$("rollCancel").onclick=closeRoll;
+$("rollSave").onclick=rollSave;
+$("maskRoll").addEventListener("click",e=>{if(e.target===$("maskRoll"))closeRoll();});
+$("rollSearch").addEventListener("input",e=>{rollKW=e.target.value;renderRoll();});
+$("rollOnlyBad").addEventListener("change",e=>{rollFilterBad=e.target.checked;renderRoll();});
 
 /* ---------- init ---------- */
 if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
