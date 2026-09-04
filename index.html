@@ -390,7 +390,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.10（实时人脸识别考勤） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.10.1（超管门禁） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -617,9 +617,13 @@ function renderAdminSel(){
   const admins=loadAdmins();const cur=curAdminName();
   const sel=$("adminSel");sel.innerHTML="";
   if(!admins.length){seedAll();}
+  if(!cur){
+    const ph=document.createElement("option");ph.value="";ph.textContent="— 请选择管理员身份（超管需密码）—";ph.disabled=true;ph.selected=true;
+    sel.appendChild(ph);
+  }
   loadAdmins().forEach(a=>{
     const o=document.createElement("option");
-    o.value=a.name;o.textContent=a.name+(a.role==="super"?"（超管）":"");
+    o.value=a.name;o.textContent=a.name+(a.role==="super"?"（超管🔒）":"");
     if(a.name===cur)o.selected=true;
     sel.appendChild(o);
   });
@@ -1438,13 +1442,40 @@ function delAdmin(name){
   pushCfg();
 }
 
+/* ---------- 管理员门禁（超管需密码 88888888；会话内记忆已验证） ---------- */
+const PASS_SUPER="88888888";
+const SS_SUPEROK="mt_super_ok";
+function superAuthed(name){
+  try{return (sessionStorage.getItem(SS_SUPEROK)||"").split(",").includes(name);}catch(e){return false;}
+}
+function markSuperAuthed(name){
+  try{const s=sessionStorage.getItem(SS_SUPEROK)||"";const a=s?[...s.split(","),name]:[name];sessionStorage.setItem(SS_SUPEROK,[...new Set(a)].join(","));}catch(e){}
+}
+function gateSkip(){try{return new URLSearchParams(location.search).has("skipgate");}catch(e){return false;}}
+function switchAdmin(name){
+  const a=loadAdmins().find(x=>x.name===name);
+  if(a&&a.role==="super"&&!superAuthed(name)&&!gateSkip()){
+    let authed=false;
+    for(let n=0;n<3;n++){
+      const v=prompt("🔒 超级管理员门禁\n请输入超管密码：");
+      if(v===null)break;
+      if(v.trim()===PASS_SUPER){authed=true;break;}
+      alert("密码错误，请重试");
+    }
+    if(!authed){renderAdminSel();render();return;}
+    markSuperAuthed(name);
+  }
+  localStorage.setItem(LS_ADMINCUR,name);
+  renderAdminSel();render();
+}
+
 /* ---------- 事件 ---------- */
 function gotoDay(s){curDate=s;render();syncFromCloud(curDate,false).then(ok=>{if(ok)render();});}
 $("prevDay").onclick=()=>gotoDay(shiftDate(curDate,-1));
 $("nextDay").onclick=()=>gotoDay(shiftDate(curDate,1));
 $("backToday").onclick=()=>gotoDay(todayStr());
 $("cloudState").onclick=()=>{syncFromCloud(curDate,true).then(ok=>{render();setCloudUI(ok?"☁ 已同步 "+nowFmt().slice(11,16):"☁ 离线·点此重试",ok?"ok":"off");});};
-$("adminSel").onchange=e=>{localStorage.setItem(LS_ADMINCUR,e.target.value);renderAdminSel();render();};
+$("adminSel").onchange=e=>{const v=e.target.value;if(v)switchAdmin(v);else{renderAdminSel();}};
 $("btnAdmins").onclick=()=>openAdminEditor(null);
 $("aCancel").onclick=()=>{$("maskAdmin").classList.remove("show");aEditName=null;};
 $("maskAdmin").addEventListener("click",e=>{if(e.target===$("maskAdmin")){$("maskAdmin").classList.remove("show");aEditName=null;}});
@@ -1896,6 +1927,13 @@ if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
 }
 renderAdminSel();
 render();
+if(!gateSkip()&&curAdminName()&&isSuper()&&!superAuthed(curAdminName())){
+  switchAdmin(curAdminName());                       // 启动即超管身份 → 先过门禁
+  if(!superAuthed(curAdminName())){
+    localStorage.removeItem(LS_ADMINCUR);renderAdminSel();render();
+    alert("未通过超管门禁。请从右上角选择管理员身份（超级管理员需输入密码 88888888）。");
+  }
+}
 syncFromCloud(curDate,false).then(ok=>{if(ok)render();});   // 首屏拉取云端并刷新
 syncCfg();                                                    // 首屏拉取基础配置（管理员/名单/花名册）
 startCloudPolling();   // 10s 轮询：手机/电脑两端改动自动互通
