@@ -183,6 +183,7 @@
   <div class="card">
     <div class="toolbar">
       <button class="tbtn primary" id="btnAddTeam">＋ 新增联队</button>
+      <button class="tbtn" id="btnRegOpen" style="display:none" title="给花名册人员登记人脸（识别点名用，超管专属）">🙂 人脸登记</button>
       <button class="tbtn" id="btnClearDay" style="color:var(--bad)">清空当日回传</button>
       <button class="tbtn primary" id="btnSubmit" style="display:none" title="把名下已填数据打包成回传文件，发给超级管理员">📤 回传数据</button>
       <button class="tbtn" id="btnInbox" style="display:none" title="接收管理员发来的回传文件并合并">📥 接收回传</button>
@@ -314,6 +315,7 @@
     <div class="roll-actions">
       <div style="font-size:12.5px" id="rollLive"></div>
       <span class="spacer"></span>
+      <button class="tbtn" id="btnReco" title="摄像头实时识别：认人自动到场（需先做人脸登记）">🔍 识别点名</button>
       <button class="btn plain" id="rollCancel">关闭</button>
       <button class="btn" id="rollSave" disabled>保存到当日日报</button>
     </div>
@@ -342,8 +344,53 @@
   </div>
 </div>
 
+<!-- 人脸登记弹窗（超管建库） -->
+<div class="mask" id="maskReg">
+  <div class="modal modal-xl" style="max-width:620px">
+    <h3>🙂 人脸登记（识别考勤的人脸库）</h3>
+    <div style="font-size:12.5px;color:var(--sub);margin-bottom:10px">
+      给花名册里的人<b>登记正面照</b>生成识别特征（照片只在本地提取特征，不上传原图）。<br>
+      ① 现拍/选图：先选下方人员 → 上传或拍摄一张<b>清晰正面照</b>；② 批量：照片文件按「姓名或学号.png」命名打包，用「批量文件夹」一次导入。</div>
+    <div class="frm"><label>联队</label><select id="regTeam"></select></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <div class="frm" style="flex:1;min-width:180px"><label>为谁登记</label><select id="regPerson"></select></div>
+      <button class="tbtn" id="regShoot">📷 拍摄/选图</button>
+      <input type="file" id="regFile" accept="image/*" hidden>
+    </div>
+    <div class="frm" style="margin-top:8px"><label>批量文件夹（文件名=姓名或学号）</label>
+      <button class="tbtn" id="regDir">📁 批量导入照片</button>
+      <input type="file" id="regDirInput" webkitdirectory multiple accept="image/*" hidden>
+    </div>
+    <div id="regStatus" style="font-size:13px;color:var(--green-d);font-weight:600;margin:6px 0"></div>
+    <div id="regList" style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px"></div>
+    <div class="modal-btns"><button class="btn plain" id="regClose">关闭</button></div>
+  </div>
+</div>
+
+<!-- 识别点名弹窗 -->
+<div class="mask" id="maskReco">
+  <div class="modal modal-xl" style="max-width:620px">
+    <h3 id="recoTitle">🔍 识别点名</h3>
+    <div style="font-size:12.5px;color:var(--sub);margin-bottom:8px">摄像头对准队列，逐个扫；识别到的人自动入列。识别门槛可调：<b>越小越严格</b>。结束写入后，未识别到的人请用逐人点名人工补。</div>
+    <div style="position:relative;background:#111;border-radius:10px;overflow:hidden" id="recoStage">
+      <video id="recoVideo" autoplay playsinline muted style="width:100%"></video>
+      <canvas id="recoCanvas" style="position:absolute;left:0;top:0;width:100%;height:100%"></canvas>
+      <div id="recoNone" style="color:#9CA3AF;text-align:center;padding:50px 10px;font-size:13px">正在启动摄像头…</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">
+      <span style="font-size:13px;font-weight:700" id="recoCount">已识别 0 人</span>
+      <span style="font-size:12.5px;color:var(--sub)">门槛</span>
+      <input type="number" id="recoTh" value="0.5" step="0.05" min="0.1" max="1" style="width:70px;border:1px solid var(--line);border-radius:8px;padding:4px 6px">
+      <span class="spacer"></span>
+      <button class="tbtn danger" id="recoStop" style="display:none">结束并写入到场</button>
+      <button class="btn plain" id="recoClose">关闭</button>
+    </div>
+    <div id="recoList" style="max-height:26vh;overflow:auto;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:4px;font-size:13px"></div>
+  </div>
+</div>
+
 <footer>
-  军训联队数据回传 · v0.9.2（排表识别导入） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.10（实时人脸识别考勤） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -585,7 +632,7 @@ function refreshRoleUI(){
   $("btnInbox").style.display=sup?"":"none";
   const card=$("statusCard");card.style.display=sup?"":"none";
   // 配置类操作（名单/花名册/清空/新增联队/恢复示例）仅超管可见 —— 普通管理员只做填报+实时回传
-  ["btnTemplate","btnImportTeams","btnRosterTpl","btnRosterImport","btnAddTeam","btnClearDay","btnReset"].forEach(id=>{
+  ["btnTemplate","btnImportTeams","btnRosterTpl","btnRosterImport","btnAddTeam","btnClearDay","btnReset","btnRegOpen"].forEach(id=>{
     const el=$(id);if(el)el.style.display=sup?"":"none";
   });
   if(sup)renderAdminStatus();
@@ -1001,13 +1048,15 @@ function importRosterFile(file){
       const iName=pickHeader(rows,["姓名","名字","学生姓名","name"]);
       if(iName<0){skipped+=rows.length-1;continue;}
       const iTeam=pickHeader(rows,["联队编号","编号","联队","排","队","id"]);
+      const iSid=pickHeader(rows,["学号","student","sid"]);
+      const mkSid=row=>{if(iSid>=0&&String(row[iSid]??"").trim())return {sid:String(row[iSid]).trim()};return {};};
       const rowsOf=ref=>{
         const arr=[];
         for(let r=1;r<rows.length;r++){
           const row=rows[r];if(!row.length)continue;
           const nm=String(row[iName]??"").trim();
           if(!nm)continue;
-          arr.push({name:nm});
+          arr.push({name:nm,...mkSid(row)});
           line++;
         }
         return arr;
@@ -1021,7 +1070,7 @@ function importRosterFile(file){
           const nm=String(row[iName]??"").trim();
           if(!nm)continue;
           if(!ref){skipped++;continue;}
-          (group[ref]=group[ref]||[]).push(nm);line++;
+          (group[ref]=group[ref]||[]).push({name:nm,...mkSid(row)});line++;
         }
         Object.entries(group).forEach(([ref,names])=>{
           const t=teams.find(x=>x.id===ref||x.name===ref||x.name.includes(ref));
@@ -1630,6 +1679,212 @@ $("faceImgBtn").onclick=()=>$("faceFile").click();
 $("faceFile").onchange=e=>{if(e.target.files[0])faceStartImg(e.target.files[0]);e.target.value="";};
 $("faceClose").onclick=closeFace;
 $("maskFace").addEventListener("click",e=>{if(e.target===$("maskFace"))closeFace();});
+
+/* ---------- 人脸识别（登记+实时识别点名） ---------- */
+let recoP=null,recoStream=null,recoTimer=null,recoSeen={},recoMatcher=null,recoTeam=null,regTeamId=null;
+const MOD_LAND=FACE_DIR+"assets/models/face_landmark_68_model",MOD_RECO=FACE_DIR+"assets/models/face_recognition_model";
+function ensureReco(){
+  if(!recoP)recoP=(async()=>{
+    await ensureFace();
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MOD_LAND);
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MOD_RECO);
+  })();
+  return recoP;
+}
+async function descOfImg(img){
+  // 先常规阈值，检出不到再用低阈值重试（兼容小尺寸登记照）
+  const tries=[faceOpts(),new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.05})];
+  for(const o of tries){
+    const det=await faceapi.detectAllFaces(img,o).withFaceLandmarks().withFaceDescriptors();
+    if(det.length)return det[0].descriptor;
+  }
+  return null;
+}
+function saveFdTo(teamId,pid,fd){
+  const all=loadRoster();const arr=all[teamId]||[];
+  const p=arr.find(x=>x.pid===Number(pid));if(!p)return false;
+  p.fd=Array.from(fd);all[teamId]=arr;saveRoster(all);return true;
+}
+function rosterFdList(teamId){return rosterOf(teamId).filter(p=>p.fd&&p.fd.length);}
+/* ---- 人脸登记界面 ---- */
+function fillRegTeams(){
+  const sel=$("regTeam");sel.innerHTML="";
+  loadTeams().forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.id+" "+t.name;sel.appendChild(o);});
+  if(sel.options.length){regTeamId=sel.value;renderRegPersons();}
+}
+function renderRegPersons(){
+  const team=regTeamId;if(!team)return;
+  const roster=rosterOf(team);
+  const ps=$("regPerson");ps.innerHTML="";
+  roster.forEach(p=>{const o=document.createElement("option");o.value=p.pid;o.textContent=p.name+(p.sid?"("+p.sid+")":"")+(p.fd?" ✓已登记":"");ps.appendChild(o);});
+  const box=$("regList");box.innerHTML=roster.length?"":'<div style="color:var(--sub);text-align:center;padding:14px">该联队还没有花名册，请先导入。</div>';
+  const has=rosterFdList(team).length;
+  box.insertAdjacentHTML("beforeend","<div style='font-size:12.5px;color:var(--sub);padding:2px 0 6px'>已登记 <b>"+has+"</b>/"+roster.length+"</div>");
+  roster.forEach(p=>{
+    const row=document.createElement("div");row.style.cssText="display:flex;gap:8px;padding:3px 2px;font-size:13px;align-items:center";
+    row.innerHTML="<b>"+p.name+"</b>"+(p.sid?"<span style='color:var(--sub)'>"+p.sid+"</span>":"")+
+      (p.fd?"<span class='chip done' style='padding:0 8px'>已登记</span>":"<span class='chip wait' style='padding:0 8px'>未登记</span>");
+    box.appendChild(row);
+  });
+}
+function openReg(){
+  if(!isSuper())return;
+  $("regStatus").textContent="";$("maskReg").classList.add("show");
+  fillRegTeams();
+}
+function regImageFor(file,pid){
+  const url=URL.createObjectURL(file);const img=new Image();
+  img.onload=async()=>{
+    $("regStatus").textContent="提取特征中…";
+    try{
+      await ensureReco();
+      const d=await descOfImg(img);
+      if(!d){$("regStatus").textContent="⚠ 未在照片里检测到清晰人脸，换一张正面照";return;}
+      saveFdTo(regTeamId,pid,d);
+      $("regStatus").textContent="✅ 已登记。建议同一人多角度/多张可再次覆盖以提升识别率。";
+      renderRegPersons();pushCfg();
+    }catch(e){$("regStatus").textContent="登记失败："+e.message;}
+    URL.revokeObjectURL(url);
+  };
+  img.onerror=()=>{$("regStatus").textContent="照片读取失败";URL.revokeObjectURL(url);};
+  img.src=url;
+}
+function regBatchFiles(files){
+  (async()=>{
+    try{await ensureReco();}catch(e){$("regStatus").textContent="模型加载失败："+e.message;return;}
+    const team=regTeamId;const roster=rosterOf(team);
+    const byName=new Map(roster.map(p=>[p.name,p]));
+    const bySid=new Map(roster.filter(p=>p.sid).map(p=>[p.sid,p]));
+    let done=0,miss=[],bad=[];
+    $("regStatus").textContent="批量处理 0/"+files.length+" …";
+    for(let i=0;i<files.length;i++){
+      const f=files[i];
+      const base=String(f.name||"").replace(/\.[^.]+$/,"").trim();
+      let p=byName.get(base)||bySid.get(base);
+      if(!p){miss.push(base);continue;}
+      try{
+        const url=URL.createObjectURL(f);const img=new Image();
+        await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=url;});
+        const d=await descOfImg(img);URL.revokeObjectURL(url);
+        if(!d){bad.push(base);continue;}
+        p.fd=Array.from(d);done++;
+      }catch(e){bad.push(base);}
+      $("regStatus").textContent="批量处理 "+(i+1)+"/"+files.length+" …";
+    }
+    saveRoster(roster);renderRegPersons();pushCfg();
+    $("regStatus").textContent="✅ 批量完成：登记 "+done+" 人"+(miss.length?"，未匹配文件 "+miss.length+"（"+miss.slice(0,3).join("、")+"…）":"")+(bad.length?"，无清晰人脸 "+bad.length+" 张":"");
+  })();
+}
+/* ---- 识别点名（实时） ---- */
+function drawRecoBoxes(dets){
+  const cv=$("recoCanvas");const v=$("recoVideo");
+  const W=v.videoWidth||640,H=v.videoHeight||480;
+  cv.width=W;cv.height=H;
+  const ctx=cv.getContext("2d");ctx.clearRect(0,0,W,H);
+  dets.forEach(d=>{
+    const r=d.detection.box;
+    const hit=recoSeen[d.label];
+    ctx.strokeStyle=hit?"#22C55E":"#F59E0B";
+    ctx.lineWidth=Math.max(2,W/420);
+    ctx.strokeRect(r.x,r.y,r.width,r.height);
+    ctx.font=Math.max(12,W/46)+"px sans-serif";
+    ctx.fillStyle=hit?"#16A34A":"#B45309";
+    ctx.fillText(d.name+(hit?" ✓":" …"),r.x,r.y>20?r.y-6:r.y+r.height+16);
+  });
+}
+function renderRecoList(rosterById){
+  const list=$("recoList");list.innerHTML="";
+  const th=parseFloat($("recoTh").value)||0.5;
+  const ks=Object.keys(recoSeen).sort((a,b)=>recoSeen[a].d-recoSeen[b].d);
+  if(!ks.length){list.innerHTML='<div style="color:var(--sub);padding:10px;text-align:center">等待识别…让人物正对摄像头，逐个扫过</div>';return;}
+  ks.forEach(pid=>{
+    const p=rosterById[pid];
+    const ok=recoSeen[pid].d<=th;
+    const row=document.createElement("div");row.style.cssText="display:flex;gap:8px;padding:3px 4px;font-size:13px;align-items:center";
+    row.innerHTML=(ok?"<span class='chip done' style='padding:0 9px'>✓ 到场</span>":"<span class='chip part' style='padding:0 9px'>? 待核</span>")+
+      "<b>"+(p?p.name:pid)+"</b><span style='color:var(--sub)'>距离 "+(recoSeen[pid].d.toFixed(3))+"</span>";
+    list.appendChild(row);
+  });
+}
+async function openReco(){
+  if(!rollTeam){alert("请先从某联队的点名界面进入");return;}
+  const team=rollTeam;
+  const hasFd=rosterFdList(team).length;
+  if(!hasFd){alert("该联队还没有人做人脸登记。请超管先点「🙂人脸登记」给花名册人员登记正面照（或用批量照片导入）。");return;}
+  $("recoTitle").textContent="🔍 识别点名 · "+teamName(team)+"（已登记 "+hasFd+" 人）";
+  recoSeen={};recoTeam=team;recoMatcher=null;
+  $("recoList").innerHTML='<div style="color:var(--sub);text-align:center;padding:10px">加载识别模型…</div>';
+  $("recoCount").textContent="已识别 0 人";$("recoNone").style.display="";
+  $("maskReco").classList.add("show");
+  try{
+    await ensureReco();
+    const persons=rosterFdList(team);
+    const refs=persons.map(p=>new faceapi.LabeledFaceDescriptors(String(p.pid),[Float32Array.from(p.fd)]));
+    recoMatcher=new faceapi.FaceMatcher(refs,0.6);
+    recoStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});
+    $("recoVideo").srcObject=recoStream;await $("recoVideo").play();
+    $("recoNone").style.display="none";$("recoStop").style.display="";
+    const rosterById={};rosterOf(team).forEach(p=>rosterById[p.pid]=p);
+    const tick=async()=>{
+      const v=$("recoVideo");
+      if(!recoStream||!v.srcObject)return;
+      try{
+        const th=parseFloat($("recoTh").value)||0.5;
+        if(recoMatcher._distanceThreshold!==th){recoMatcher=new faceapi.FaceMatcher(recoMatcher._labeledDescriptors,th);}
+        const res=await faceapi.detectAllFaces(v,faceOpts()).withFaceLandmarks().withFaceDescriptors();
+        const hits=[];
+        for(const r of res){
+          const best=recoMatcher.findBestMatch(r.descriptor);
+          if(best.label!=="unknown"&&best.distance<0.85){
+            const cur=recoSeen[best.label];
+            if(!cur||best.distance<cur.d){recoSeen[best.label]={d:best.distance};}
+            hits.push({label:best.label,detection:r.detection,name:rosterById[best.label]?rosterById[best.label].name:best.label});
+          }
+        }
+        drawRecoBoxes(hits);
+        $("recoCount").textContent="已识别 "+Object.keys(recoSeen).length+" 人";
+        renderRecoList(rosterById);
+      }catch(e){}
+      recoTimer=setTimeout(tick,700);
+    };
+    tick();
+  }catch(e){$("recoList").innerHTML='<div style="color:var(--bad)">启动失败：'+e.message+"（摄像头权限？）</div>";$("recoNone").style.display="";$("recoStop").style.display="none";}
+}
+function stopRecoAll(){
+  if(recoStream){recoStream.getTracks().forEach(t=>t.stop());recoStream=null;}
+  if(recoTimer){clearTimeout(recoTimer);recoTimer=null;}
+}
+function recoWrite(){
+  const team=recoTeam;if(!team)return;
+  const th=parseFloat($("recoTh").value)||0.5;
+  const okPids=Object.keys(recoSeen).filter(pid=>recoSeen[pid].d<=th);
+  if(!okPids.length){alert("还没有识别到任何人。请确保已开启摄像头并让人脸入镜。");return;}
+  const st=rollState(team);
+  okPids.forEach(pid=>{st[pid]={st:"ok"};});
+  saveRollState(team,st);
+  const unclear=Object.keys(recoSeen).length-okPids.length;
+  stopRecoAll();$("maskReco").classList.remove("show");
+  renderRoll();
+  alert("✅ 已将识别到的 "+okPids.length+" 人标记到场"+(unclear?"；"+unclear+" 人距离偏大未自动写入，请在点名列表人工核对。":"")+"。");
+  recoTeam=null;
+}
+function regFileChooseForCurrent(){
+  const pid=$("regPerson").value;if(!pid){$("regStatus").textContent="请先选择要登记的人员";return;}
+  $("regStatus").textContent="请选择/拍摄该人员的正面照…";
+  $("regFile").click();
+}
+$("btnRegOpen").onclick=openReg;
+$("regClose").onclick=()=>$("maskReg").classList.remove("show");
+$("maskReg").addEventListener("click",e=>{if(e.target===$("maskReg"))$("maskReg").classList.remove("show");});
+$("regTeam").onchange=e=>{regTeamId=e.target.value;renderRegPersons();};
+$("regShoot").onclick=regFileChooseForCurrent;
+$("regFile").onchange=e=>{if(e.target.files[0])regImageFor(e.target.files[0],$("regPerson").value);e.target.value="";};
+$("regDir").onclick=()=>$("regDirInput").click();
+$("regDirInput").onchange=e=>{if(e.target.files.length)regBatchFiles(e.target.files);e.target.value="";};
+$("btnReco").onclick=openReco;
+$("recoClose").onclick=()=>{stopRecoAll();$("maskReco").classList.remove("show");recoTeam=null;};
+$("maskReco").addEventListener("click",e=>{if(e.target===$("maskReco")){stopRecoAll();$("maskReco").classList.remove("show");recoTeam=null;}});
+$("recoStop").onclick=recoWrite;
 
 /* ---------- init ---------- */
 if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
