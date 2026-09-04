@@ -806,10 +806,11 @@ function exportTemplate(){
 }
 
 /* ---------- 云端同步（Cloudflare Worker+KV） ---------- */
-let cloudBusy=false,cloudOk=false,cloudLast="";
+let cloudBusy=false,cloudOk=false,cloudLast="",cloudErr="";
 function setCloudUI(txt,cls){
   const el=$("cloudState");if(!el)return;
   el.textContent=txt;el.className="cloud "+cls;
+  el.title=cls==="off"&&cloudErr?("失败原因："+cloudErr):(cls==="ok"?("最近同步 "+nowFmt()+" · 点此手动同步"):"云端自动同步状态 · 点此手动同步");
 }
 async function cloudCall(path,qs,opts){
   try{
@@ -817,9 +818,9 @@ async function cloudCall(path,qs,opts){
       method:(opts&&opts.method)||"GET",
       headers:{"X-Pass":CLOUD_PASS,...((opts&&opts.body)?{"Content-Type":"application/json"}:{})},
       body:(opts&&opts.body)?JSON.stringify(opts.body):undefined});
-    if(!res.ok)return null;
+    if(!res.ok){cloudErr="HTTP "+res.status;return null;}
     return await res.json();
-  }catch(e){return null;}
+  }catch(e){cloudErr=e.name+": "+e.message;return null;}
 }
 /* 拉取某日云端全量 → 合并本地（日报同队取新、签入按来源替换）；admins 状态存快照 */
 async function syncFromCloud(date,manual){
