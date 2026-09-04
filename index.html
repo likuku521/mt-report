@@ -1857,16 +1857,19 @@ function stopRecoAll(){
 function recoWrite(){
   const team=recoTeam;if(!team)return;
   const th=parseFloat($("recoTh").value)||0.5;
+  const roster=rosterOf(team);
   const okPids=Object.keys(recoSeen).filter(pid=>recoSeen[pid].d<=th);
   if(!okPids.length){alert("还没有识别到任何人。请确保已开启摄像头并让人脸入镜。");return;}
+  const missing=roster.filter(p=>!recoSeen[p.pid]||recoSeen[p.pid].d>th).map(p=>p.pid);
+  if(missing.length&&!confirm("识别到 "+okPids.length+"/"+roster.length+" 人，其余 "+missing.length+" 人未识别到。\n将把未识别到的人先按【缺勤】写入点名（被遮挡/请假的，之后可在点名列表改状态并重新保存）。\n继续写入考勤？")){return;}
   const st=rollState(team);
   okPids.forEach(pid=>{st[pid]={st:"ok"};});
+  missing.forEach(pid=>{st[pid]={st:"absent"};});
   saveRollState(team,st);
-  const unclear=Object.keys(recoSeen).length-okPids.length;
   stopRecoAll();$("maskReco").classList.remove("show");
-  renderRoll();
-  alert("✅ 已将识别到的 "+okPids.length+" 人标记到场"+(unclear?"；"+unclear+" 人距离偏大未自动写入，请在点名列表人工核对。":"")+"。");
   recoTeam=null;
+  renderRoll();
+  rollSave();   // 点名已全员确认 → 直接生成当日日报，统计立即可见
 }
 function regFileChooseForCurrent(){
   const pid=$("regPerson").value;if(!pid){$("regStatus").textContent="请先选择要登记的人员";return;}
