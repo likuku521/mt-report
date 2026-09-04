@@ -7,3 +7,6 @@ __pycache__/
 # 云端 Worker（独立部署，不入站点仓库）
 cloudflare-worker/
 node_modules/
+
+_tmp*
+_tmp_*

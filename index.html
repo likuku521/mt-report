@@ -154,7 +154,7 @@
     <button class="btn ghost small" id="btnTemplate">⬇ 名单模板</button>
     <button class="btn ghost small" id="btnImportTeams">📥 导入名单</button>
     <button class="btn" id="btnExportDaily">⬇ 导出当日汇总 CSV</button>
-    <input type="file" id="fileTeams" accept=".csv,.txt" hidden>
+    <input type="file" id="fileTeams" accept=".csv,.txt,.xlsx,.xls" hidden>
   </div>
 </header>
 
@@ -187,9 +187,9 @@
       <button class="tbtn primary" id="btnSubmit" style="display:none" title="把名下已填数据打包成回传文件，发给超级管理员">📤 回传数据</button>
       <button class="tbtn" id="btnInbox" style="display:none" title="接收管理员发来的回传文件并合并">📥 接收回传</button>
       <input type="file" id="fileSubmit" accept=".json,.mtreport,application/json" hidden>
-      <button class="tbtn" id="btnRosterTpl" title="下载花名册模板：联队编号+姓名">🧾 花名册模板</button>
-      <button class="tbtn" id="btnRosterImport" title="导入人员花名册（会按联队更新应到人数）">📥 导入花名册</button>
-      <input type="file" id="fileRoster" accept=".csv,.txt" hidden>
+      <button class="tbtn" id="btnRosterTpl" title="下载花名册模板（xlsx：每联队一个 sheet，sheet 名=联队）">🧾 花名册模板</button>
+      <button class="tbtn" id="btnRosterImport" title="导入花名册（支持 xlsx 多 sheet / csv，超管专属）">📥 导入花名册</button>
+      <input type="file" id="fileRoster" accept=".csv,.txt,.xlsx,.xls" hidden>
       <span class="submit-state no" id="mySubmitState" style="display:none"></span>
       <span class="legend" style="margin-left:auto">
         <span>🟢 <b>已回传</b></span><span>🟡 部分</span><span>⚪ 待回传</span>
@@ -343,7 +343,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.9（管理员/名单云端同步） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.9.1（xlsx导入+权限收紧+清理修复） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -584,6 +584,10 @@ function refreshRoleUI(){
   $("btnSubmit").style.display=sup?"none":"";
   $("btnInbox").style.display=sup?"":"none";
   const card=$("statusCard");card.style.display=sup?"":"none";
+  // 配置类操作（名单/花名册/清空/新增联队/恢复示例）仅超管可见 —— 普通管理员只做填报+实时回传
+  ["btnTemplate","btnImportTeams","btnRosterTpl","btnRosterImport","btnAddTeam","btnClearDay","btnReset"].forEach(id=>{
+    const el=$(id);if(el)el.style.display=sup?"":"none";
+  });
   if(sup)renderAdminStatus();
   updateSubmitUI();
 }
@@ -646,6 +650,9 @@ function render(){
   const admins=loadAdmins();
   const noTeams=!loadTeams().length;
   const noScope=!noTeams&&!teams.length;
+  if(noTeams)$("emptyBox").innerHTML=isSuper()
+    ?'还没有名单。<br>点击「⬇ 名单模板」下载模板 → 填好联队 → 点「📥 导入名单」；<br>或点击「＋ 新增联队」逐条添加。'
+    :'名单尚未配置。<br>请等待超级管理员导入联队名单后再填报（页面会自动同步）。';
   $("emptyBox").style.display=noTeams?"":"none";
   $("noScopeBox").style.display=noScope?"":"none";
   $("tipBox").style.display=(noTeams||noScope)?"none":"";
@@ -694,6 +701,7 @@ function openEditor(span){
 }
 function editExpected(teamId){
   if(!canSeeTeam(teamId))return;
+  if(!isSuper()){alert("仅超级管理员可调整联队名单/应到人数。");return;}
   const t=getTeam(teamId);if(!t)return;
   if(rosterOf(teamId).length){alert("该联队已有花名册，「应到」=名单人数，请通过「导入花名册」调整名单。");return;}
   const v=prompt("修改 "+t.name+" 的应到人数：",expectedOf(teamId)||"");
@@ -701,7 +709,42 @@ function editExpected(teamId){
   const n=parseInt(v,10);if(Number.isFinite(n)&&n>=0){t.expected=n;saveTeams(loadTeams().map(x=>x.id===teamId?t:x));paintRow(teamId);pushCfg();}
 }
 
-/* ---------- CSV ---------- */
+/* ---------- CSV / Excel 读取（.csv .txt .xlsx .xls） ---------- */
+let xlsxLoaded=false;
+function ensureXLSX(){
+  return new Promise(res=>{
+    if(window.XLSX)return res(true);
+    if(xlsxLoaded)return res(!!window.XLSX);
+    xlsxLoaded=true;
+    const s=document.createElement("script");
+    s.src=FACE_DIR+"assets/lib/xlsx.full.min.js";
+    s.onload=()=>res(!!window.XLSX);s.onerror=()=>res(false);
+    document.head.appendChild(s);
+  });
+}
+/* 返回 {sheets:[{name,rows}]}；xlsx 按 sheet 拆分，csv/txt 单 sheet */
+async function readWorkbook(file){
+  const isXls=/\.(xlsx|xls)$/i.test(file.name||"");
+  if(!isXls){
+    const text=await readFileText(file);
+    return {sheets:[{name:"",rows:parseCSV(text)}]};
+  }
+  const ok=await ensureXLSX();
+  if(!ok)throw new Error("Excel 解析库加载失败，请检查网络后重试");
+  const buf=await file.arrayBuffer();
+  const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
+  return {sheets:wb.SheetNames.map(n=>{
+    const arr=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:""});
+    return {name:n,rows:arr.map(r=>r.map(c=>String(c??"").trim())).filter(row=>row.some(x=>x!==""))};
+  })};
+}
+function exportXlsx(wb,filename){
+  const out=XLSX.write(wb,{bookType:"xlsx",type:"array"});
+  const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},200);
+}
+function teamNameX(id){const t=loadTeams().find(x=>x.id===id);return t?t.name:id;}
 function parseCSV(text){
   const rows=[];let row=[],cell="",inQ=false;
   for(let i=0;i<text.length;i++){
@@ -729,13 +772,13 @@ function pickHeader(rows,keys){
   return-1;
 }
 function importTeams(file){
-  readFileText(file).then(text=>{
-    const rows=parseCSV(text);
+  readWorkbook(file).then(wb=>{
+    const rows=(wb.sheets[0]||{rows:[]}).rows;
     if(rows.length<2){alert("文件里没有数据行（需要表头 + 至少一行联队）");return;}
-    const iId=pickHeader(rows,["联队编号","编号","id"]);
+    const iId=pickHeader(rows,["联队编号","编号","联队","队","id"]);
     const iName=pickHeader(rows,["联队名称","名称","联队名","name"]);
     const iExp=pickHeader(rows,["应到","人数","应到人数","expected"]);
-    if(iId<0&&iName<0){alert("没识别到「联队编号/联队名称」列，请使用模板格式");return;}
+    if(iId<0&&iName<0){alert("没识别到「联队编号/联队名称」列，请使用名单模板格式（xlsx/csv 均可）");return;}
     const out=[];
     for(let r=1;r<rows.length;r++){
       const row=rows[r];if(!row.length)continue;
@@ -747,9 +790,9 @@ function importTeams(file){
     }
     if(!out.length){alert("解析后没有有效联队行");return;}
     if(confirm("将用导入名单替换当前名单（"+loadTeams().length+" 个）？\n（导入 "+out.length+" 个，日报/签入/管理员数据不受影响）")){
-      saveTeams(out);render();pushCfg();alert("✅ 导入成功："+out.length+" 个联队");
+      saveTeams(out);render();pushCfg();alert("✅ 名单导入成功："+out.length+" 个联队");
     }
-  }).catch(e=>alert("读取文件失败："+e.message));
+  }).catch(e=>alert("读取失败："+e.message));
 }
 function download(filename,content){
   const blob=new Blob(["\uFEFF"+content],{type:"text/csv;charset=utf-8"});
@@ -922,33 +965,75 @@ function pushCfg(){                                   // 超管配置改动后�
 function startCfgPolling(){if(cfgTimer)return;const ms=parseInt(new URLSearchParams(location.search).get("cfgsec"))||60000;cfgTimer=setInterval(syncCfg,ms);}
 
 /* ---------- 花名册：模板/导入 ---------- */
-function rosterTpl(){
-  download("花名册模板.csv",["联队编号,姓名,学号(可选)","L01,王小明,2026010101","L01,李大力,2026010102","L02,赵一诺,2026020101","L02,钱多多,2026020102"].join("\r\n"));
+/* 花名册模板：xlsx 多 sheet（每联队一个 sheet，sheet 名=联队），列同真实排表 */
+async function rosterTpl(){
+  const ok=await ensureXLSX();
+  if(!ok){alert("Excel 组件加载失败，请检查网络");return;}
+  const teams=loadTeams();
+  if(!teams.length){alert("请先导入联队名单，模板将按联队生成 sheet");return;}
+  const wb=XLSX.utils.book_new();
+  teams.forEach(t=>{
+    const aoa=[["学号","姓名","性别","专业","楼栋","房间","备注"]];
+    for(let i=1;i<=Math.min(t.expected||0,8);i++)aoa.push(["",t.name+"示例学员"+i,"","","","",""]);
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    const sn = String(t.name || t.id).replace(/[\/:*?"<>|[\[\]]/g, "_").slice(0, 31);
+    XLSX.utils.book_append_sheet(wb,ws,sn);
+  });
+  exportXlsx(wb,"花名册模板.xlsx");
 }
 function importRosterFile(file){
-  readFileText(file).then(text=>{
-    const rows=parseCSV(text);
-    if(rows.length<2){alert("文件里没有数据行");return;}
-    const iTeam=pickHeader(rows,["联队编号","编号","联队","队","id"]);
-    const iName=pickHeader(rows,["姓名","名字","name"]);
-    if(iName<0){alert("没找到「姓名」列 —— 花名册需包含：联队编号,姓名[,学号]");return;}
-    const out={};let line=0,skipped=0;
-    for(let r=1;r<rows.length;r++){
-      const row=rows[r];if(!row.length)continue;
-      const team=String((iTeam>=0?row[iTeam]:"")??"").trim();
-      const name=String(row[iName]??"").trim();
-      if(!name){skipped++;continue;}
-      if(!team){skipped++;continue;}
-      const t=loadTeams().find(x=>x.id===team||x.name===team);
-      const tid=t?t.id:team;
-      (out[tid]=out[tid]||[]).push({pid:out[tid]?out[tid].length+1:1,name});
-      line++;
+  readWorkbook(file).then(wb=>{
+    const teams=loadTeams();
+    const out={},newTeams=[],created=[];
+    let line=0,skipped=0,noTeamSheets=0;
+    for(const sh of wb.sheets){
+      const rows=sh.rows;
+      if(rows.length<2){continue;}
+      const iName=pickHeader(rows,["姓名","名字","学生姓名","name"]);
+      if(iName<0){skipped+=rows.length-1;continue;}
+      const iTeam=pickHeader(rows,["联队编号","编号","联队","排","队","id"]);
+      const rowsOf=ref=>{
+        const arr=[];
+        for(let r=1;r<rows.length;r++){
+          const row=rows[r];if(!row.length)continue;
+          const nm=String(row[iName]??"").trim();
+          if(!nm)continue;
+          arr.push({name:nm});
+          line++;
+        }
+        return arr;
+      };
+      if(iTeam>=0){
+        // 按列分组
+        const group={};
+        for(let r=1;r<rows.length;r++){
+          const row=rows[r];if(!row.length)continue;
+          const ref=String(row[iTeam]??"").trim();
+          const nm=String(row[iName]??"").trim();
+          if(!nm)continue;
+          if(!ref){skipped++;continue;}
+          (group[ref]=group[ref]||[]).push(nm);line++;
+        }
+        Object.entries(group).forEach(([ref,names])=>{
+          const t=teams.find(x=>x.id===ref||x.name===ref||x.name.includes(ref));
+          if(!t){alert("联队「"+ref+"」不在名单中，请先在名单里添加或改名单模板列");noTeamSheets++;return;}
+          const cur=out[t.id]=out[t.id]||[];
+          names.forEach(nm=>cur.push({name:nm}));
+        });
+        continue;
+      }
+      // 无编号列 → sheet 名归属；找不到联队则自动新建
+      const ref=sh.name;
+      let t=teams.find(x=>x.id===ref||x.name===ref||(x.name&&ref&&x.name.includes(ref)));
+      if(!t){t={id:ref||("T"+Date.now()),name:ref||"新联队",expected:0};newTeams.push(t);created.push(ref||"未命名");teams.push(t);}
+      (out[t.id]=out[t.id]||[]).push(...rowsOf(ref));
     }
-    if(!line){alert("没有解析到任何人员（跳过 "+skipped+" 行）");return;}
-    const affected=Object.keys(out).length;
-    if(!confirm("将写入 "+affected+" 个联队花名册、共 "+line+" 人。\n"+(skipped?"跳过 "+skipped+" 行无姓名/无联队行。\n":"")+"已存在名单的联队会被替换，「应到」自动等于名单人数。\n继续？"))return;
+    if(!line){alert("没有解析到任何人员（跳过 "+skipped+" 行）。请确认表头含「姓名」，格式为模板 xlsx/csv。");return;}
+    if(!confirm("将导入 "+line+" 人到 "+(Object.keys(out).length)+" 个联队"+(created.length?("\n（自动新建联队："+created.join("、")+"）"):"")+(skipped?"\n（跳过 "+skipped+" 行无姓名行）":"")+"。\n已存在名单的联队会被替换。继续？"))return;
+    Object.values(out).forEach(arr=>arr.forEach((p,i)=>{p.pid=i+1;}));   // 补点名索引用 pid
     const existing=loadRoster();Object.assign(existing,out);saveRoster(existing);
-    render();pushCfg();alert("✅ 花名册导入成功："+line+" 人 / "+affected+" 队");
+    if(newTeams.length){saveTeams(teams);}
+    render();pushCfg();alert("✅ 花名册导入成功："+line+" 人 / "+(Object.keys(out).length)+" 队"+(created.length?"（新建 "+created.join("、")+"）":""));
   }).catch(e=>alert("读取失败："+e.message));
 }
 
@@ -1215,6 +1300,8 @@ function undoTrans(id){
   if(!canSeeTeam(t.from)&&!canSeeTeam(t.to))return;
   if(!confirm("撤销签入单："+teamName(t.from)+" → "+teamName(t.to)+" ×"+num(t.count)+" ？"))return;
   all[curDate]=day.filter(x=>x.id!==id);saveTrans(all);render();
+  // 云端删除：单级 delTrans（激活后精确删）+ 快照推送兜底（管理员撤自己的单即时生效）
+  cloudCall("/delTrans","",{method:"POST",body:{date:curDate,id}});
   autoPush("transfer");
 }
 
@@ -1325,9 +1412,17 @@ $("btnAddTeam").onclick=()=>{
   const t=loadTeams();t.push({id:id.trim()||"T"+Date.now(),name:nm.trim()||id.trim(),expected:Number.isFinite(num(exp))?num(exp):0});
   saveTeams(t);render();pushCfg();
 };
-$("btnClearDay").onclick=()=>{
-  if(!confirm("清空 "+curDate+" 的日报回传数据？（签入登记保留）"))return;
-  const all=loadReports();delete all[curDate];saveReports(all);render();
+$("btnClearDay").onclick=async()=>{
+  if(!isSuper())return;
+  if(!confirm("清空 "+curDate+" 的当日全部数据（日报+签入，含云端所有管理员）？\n此操作不可恢复！"))return;
+  if(!confirm("再次确认：真的要清空 "+curDate+" 全部数据吗？"))return;
+  const r=await cloudCall("/clearDay","",{method:"POST",body:{date:curDate}});
+  if(!r||!r.ok){alert("❌ 云端清空失败（网络？），本地未动以免反复回灌。稍后重试。");return;}
+  const all=loadReports();delete all[curDate];saveReports(all);
+  const ta=loadTrans();delete ta[curDate];saveTrans(ta);
+  const rl=loadRoll();delete rl[curDate];saveRoll(rl);
+  render();
+  alert("✅ 已清空 "+curDate+" 全部数据（云端+本机）。");
 };
 $("btnTransAdd").onclick=()=>openModal(null);
 $("fCancel").onclick=()=>$("mask").classList.remove("show");
