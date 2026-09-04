@@ -174,7 +174,6 @@
     <div class="stat"><div class="num" id="stExpected">–</div><div class="lab">应到总人数</div></div>
     <div class="stat"><div class="num small" id="stReported">–</div><div class="lab">今日已回传</div></div>
     <div class="stat"><div class="num small" id="stRate">–</div><div class="lab">回传率</div></div>
-    <div class="stat"><div class="num small" id="stTransfer">–</div><div class="lab">跨队签入人次</div></div>
   </div>
 
   <div class="card">
@@ -203,8 +202,6 @@
           <th class="num" title="事假人数">事假</th>
           <th class="num" title="伤病见习（随队不训）">伤病见习</th>
           <th class="num" title="自动 = 应到 − 实到 − 病假 − 事假 − 伤病见习">缺勤</th>
-          <th class="num" title="本队今天去其他联队训练人数（签入单自动汇总）">⇄出</th>
-          <th class="num" title="其他联队今天来本队训练人数（签入单自动汇总）">⇄入</th>
           <th>填报人</th>
           <th>状态</th>
           <th style="width:80px">操作</th>
@@ -224,21 +221,8 @@
       ☁ <b>实时互通</b>：所有修改<b>自动上云</b>，页面每 10 秒自动拉取——手机/电脑同时打开，一边改另一边自动更新。<br>
       📤 <b>回传确认</b>：数据已实时同步，点「回传数据」是向超管<b>确认"今日已完成"</b>并补齐漏传；网络不通时自动降级为文件发送。<br>
       👤 <b>身份</b>：普通管理员只看/填报自己负责的联队；超级管理员看全部、负责收齐统计。<br>
-      ⇄ <b>跨队签入</b>：队员去其他联队训练 → 该行「⇄ 签入」或下方「＋ 登记签入」。<br>
+      ⇄ <b>划归</b>：把某人从本队划到其他联队 → 该行「⇄ 移人」或「联队名单管理」内选人移动，档案/名单随人走。<br>
       ⚠️ 数据只存在<b>当前设备浏览器</b>，请养成「填完就回传、文件即备份」的习惯。
-    </div>
-  </div>
-
-  <div class="card" id="transferCard">
-    <div class="toolbar">
-      <h2 style="margin:0">⇄ 跨队签入登记 <span id="transCount" style="color:var(--green-d)">0 条</span></h2>
-      <span class="spacer"></span>
-      <button class="tbtn" id="btnTransExport">⬇ 导出明细</button>
-      <button class="tbtn primary" id="btnTransAdd">＋ 登记签入</button>
-    </div>
-    <ul class="trans-list" id="transList"></ul>
-    <div class="empty" id="transEmpty" style="padding:16px 0">
-      没有与你相关的签入登记。队员去其他联队训练时点「＋ 登记签入」。
     </div>
   </div>
 
@@ -435,8 +419,22 @@
   </div>
 </div>
 
+<!-- 划归人员到其他联队 -->
+<div class="mask" id="maskMove">
+  <div class="modal" style="max-width:420px">
+    <h3>⇄ 划归人员</h3>
+    <div style="font-size:13px;margin-bottom:10px">将 <b id="mvWho"></b> 划归到：</div>
+    <div class="frm"><label>目标联队</label><select id="mvTo"></select></div>
+    <div style="font-size:12px;color:var(--sub);margin-top:6px">划归后：他从此队名单移入目标联队（应到自动增减），学号/人脸特征随人走；今后点名与日报都在目标联队。</div>
+    <div class="modal-btns">
+      <button class="btn plain" id="mvCancel">取消</button>
+      <button class="btn" id="mvOk">确认划归</button>
+    </div>
+  </div>
+</div>
+
 <footer>
-  军训联队数据回传 · v0.11.1（新增/导入合一） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12（人名级划归） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -545,11 +543,7 @@ function teamDerived(teamId){
   const rep=dayReport(curDate)[teamId]||{};
   const get=v=>{if(v===""||v==null)return 0;const n=parseInt(v,10);return Number.isFinite(n)&&n>=0?n:0;};
   const filled=MANUAL.filter(f=>String(rep[f]??"").trim()!=="").length;
-  const ts=dayTrans(curDate);
-  const out=ts.filter(t=>t.from===teamId).reduce((a,t)=>a+get(t.count),0);
-  const inn=ts.filter(t=>t.to===teamId).reduce((a,t)=>a+get(t.count),0);
-  return {actual:get(rep.actual),sick:get(rep.sick),personal:get(rep.personal),injured:get(rep.injured),
-          filled,out,inn,rep};
+  return {actual:get(rep.actual),sick:get(rep.sick),personal:get(rep.personal),injured:get(rep.injured),filled,rep};
 }
 function expectedOf(teamId){
   const roster=rosterOf(teamId);
@@ -586,18 +580,14 @@ function rowHtml(t,i){
   const absHtml=absent===null
     ?"<span class='val auto empty' data-f='absent' title='自动计算，回传后显示'>–</span>"
     :"<span class='val auto"+(absent<0?" neg":"")+"' data-f='absent' title='自动 = 应到 − 实到 − 病假 − 事假 − 伤病见习"+(absent<0?"\n⚠ 填写合计已超过应到！":"")+"'>"+(absent<0?"⚠"+absent:absent)+"</span>";
-  const outHtml=d.out>0?d.out+"<span class='tag' title='签入单自动汇总'>单</span>":"–";
-  const innHtml=d.inn>0?d.inn+"<span class='tag' title='签入单自动汇总'>单</span>":"–";
   return "<td>"+(i+1)+"</td>"+
     "<td><b>"+esc(t.id)+"</b> "+esc(t.name)+"</td>"+
     "<td class='num'><span class='val' data-exp='"+cssEsc(t.id)+"' title='点击修改应到人数' role='button'>"+(Number.isFinite(exp)?exp:"?")+"</span></td>"+
     man+
     "<td class='num'>"+absHtml+"</td>"+
-    "<td class='num' title='去其他联队训练人数'>"+outHtml+"</td>"+
-    "<td class='num' title='来本队训练人数'>"+innHtml+"</td>"+
     "<td>"+(d.rep?.reporter?esc(d.rep.reporter):"<span style='color:#C9CFC9'>–</span>")+"</td>"+
     "<td><span class='chip "+st.cls+"'>"+st.txt+"</span></td>"+
-    "<td style='white-space:nowrap'><button class='tbtn small rc-btn' data-id='"+cssEsc(t.id)+"' title='打开本联队花名册点名核对'>✏ 点名</button> <button class='tbtn small tf-btn' data-id='"+cssEsc(t.id)+"' title='登记：本队有人去其他联队训练'>⇄ 签入</button></td>";
+    "<td style='white-space:nowrap'><button class='tbtn small rc-btn' data-id='"+cssEsc(t.id)+"' title='打开本联队花名册点名核对'>✏ 点名</button> <button class='tbtn small tf-btn' data-id='"+cssEsc(t.id)+"' title='把某人划归到其他联队（超管）'>⇄ 移人</button></td>";
 }
 function paintRow(teamId){
   const tr=document.querySelector('#tbody tr[data-tid="'+cssEsc(teamId)+'"]');
@@ -611,17 +601,15 @@ function paintRow(teamId){
 }
 function paintStats(){
   const teams=visibleTeams();
-  let expSum=0,trans=0,doneCnt=0;
+  let expSum=0,doneCnt=0;
   teams.forEach(t=>{
     const e=expectedOf(t.id);if(Number.isFinite(e))expSum+=e;
-    const d=teamDerived(t.id);trans+=d.inn;
-    const s=rowStatus(d);if(s.cls==="done"||s.cls==="part")doneCnt++;
+    const s=rowStatus(teamDerived(t.id));if(s.cls==="done"||s.cls==="part")doneCnt++;
   });
   $("stTeams").textContent=teams.length;
   $("stExpected").textContent=expSum;
   $("stReported").textContent=doneCnt+"/"+teams.length;
   $("stRate").textContent=teams.length?(Math.round(doneCnt/teams.length*100)+"%"):"–";
-  $("stTransfer").textContent=trans;
   $("teamCount").textContent=teams.length;
   $("teamTotal").textContent=loadTeams().length;
   fillTotal();
@@ -633,14 +621,13 @@ function fillTotal(){
   const done=teams.filter(t=>teamDerived(t.id).filled>0);
   tf.innerHTML="";tf.style.display="none";
   if(!done.length)return;
-  let exp=0,actual=0,sick=0,personal=0,injured=0,absent=0,out=0,inn=0;
+  let exp=0,actual=0,sick=0,personal=0,injured=0,absent=0;
   done.forEach(t=>{
     const e=expectedOf(t.id);if(Number.isFinite(e))exp+=e;
     const d=teamDerived(t.id);
     actual+=d.actual;sick+=d.sick;personal+=d.personal;injured+=d.injured;
     const ab=calcAbsent(t.id);if(ab!==null)absent+=ab;
   });
-  teams.forEach(t=>{const d=teamDerived(t.id);out+=d.out;inn+=d.inn;});
   const att=actual+personal+sick+injured; // 人数核算参考
   tf.style.display="";
   const tr=document.createElement("tr");tr.className="tr-total";
@@ -648,7 +635,7 @@ function fillTotal(){
     "<td class='num'>"+exp+"</td>"+
     "<td class='num'>"+actual+"</td><td class='num'>"+sick+"</td><td class='num'>"+personal+"</td><td class='num'>"+injured+"</td>"+
     "<td class='num'>"+absent+(att>exp?"<span class='tag' style='background:#FEE2E2;color:#991B1B'>超填</span>":"")+"</td>"+
-    "<td class='num'>"+(out||"0")+"</td><td class='num'>"+(inn||"0")+"</td><td></td><td></td><td></td>";
+    "<td></td><td></td><td></td>";
   tf.appendChild(tr);
 }
 
@@ -753,7 +740,7 @@ function render(){
   $("emptyBox").style.display=noTeams?"":"none";
   $("noScopeBox").style.display=noScope?"":"none";
   $("tipBox").style.display=(noTeams||noScope)?"none":"";
-  if(noTeams||noScope){paintStats();renderTransList();refreshRoleUI();return;}
+  if(noTeams||noScope){paintStats();refreshRoleUI();return;}
   teams.forEach((t,i)=>{
     const tr=document.createElement("tr");
     tr.dataset.tid=t.id;
@@ -762,7 +749,6 @@ function render(){
     tbody.appendChild(tr);
   });
   paintStats();
-  renderTransList();
   refreshRoleUI();
 }
 
@@ -913,29 +899,25 @@ function download(filename,content){
 }
 function exportDaily(){
   const teams=visibleTeams();
-  const lines=["联队编号,联队名称,应到,实到,病假,事假,伤病见习,缺勤,迁出,迁入,场地人数,填报人,填报时间,回传状态"];
-  let exp=0,actual=0,sick=0,personal=0,injured=0,absent=0,out=0,inn=0,filledCnt=0;
+  const lines=["联队编号,联队名称,应到,实到,病假,事假,伤病见习,缺勤,填报人,填报时间,回传状态"];
+  let exp=0,actual=0,sick=0,personal=0,injured=0,absent=0,filledCnt=0;
   teams.forEach(t=>{
     const d=teamDerived(t.id);
     const expT=expectedOf(t.id);
     const absentT=calcAbsent(t.id);
     const st=rowStatus(d);
-    const site=(Number.isFinite(expT)?expT:0)+d.inn-d.out;
     const row=[t.id,t.name,Number.isFinite(expT)?expT:"",
       d.rep?.actual??"",d.rep?.sick??"",d.rep?.personal??"",d.rep?.injured??"",
       absentT===null?"":absentT,
-      d.out||"",d.inn||"",
-      d.filled>0?site:"",
       d.rep?.reporter??"",d.rep?.ts??"",st.txt];
     lines.push(row.map(csvCell).join(","));
     if(Number.isFinite(expT))exp+=expT;
     actual+=d.actual;sick+=d.sick;personal+=d.personal;injured+=d.injured;
     if(absentT!==null)absent+=absentT;
-    out+=d.out;inn+=d.inn;
     if(d.filled>0)filledCnt++;
   });
   if(filledCnt>0){
-    lines.push([,"合计（已填 "+filledCnt+"/"+teams.length+" 队）",exp,actual,sick,personal,injured,absent,out||"",inn||"",actual+inn-out,"","",""].map(csvCell).join(","));
+    lines.push([,"合计（已填 "+filledCnt+"/"+teams.length+" 队）",exp,actual,sick,personal,injured,absent,"","",""].map(csvCell).join(","));
   }
   if(isSuper()){
     const admins=loadAdmins().filter(a=>a.role!=="super");
@@ -1153,8 +1135,8 @@ function importRosterFile(file){
 
 /* ---------- 花名册点名 ---------- */
 const RST={ok:{t:"到场",c:"on-ok"},sick:{t:"病假",c:"on-sick"},personal:{t:"事假",c:"on-per"},
-  injured:{t:"伤病",c:"on-inj"},absent:{t:"缺勤",c:"on-abs"},away:{t:"去他队",c:"on-away"}};
-const RORD=["ok","sick","personal","injured","absent","away"];
+  injured:{t:"伤病",c:"on-inj"},absent:{t:"缺勤",c:"on-abs"}};
+const RORD=["ok","sick","personal","injured","absent"];
 let rollTeam=null,rollFilterBad=false,rollKW="";
 
 function rollState(teamId){return (dayRoll(curDate)[teamId])||{};}
@@ -1182,38 +1164,28 @@ function renderRoll(){
   const confirmed=Object.keys(st).length;
   const c=rollSummary(st);
   const list=$("rollList");list.innerHTML="";
-  if(!total){list.innerHTML="<div class='roll-empty'>本联队还没有花名册。<br>请点表格上方「花名册模板」下载模板填写，再点「📥 导入花名册」。</div>";
+  if(!total){list.innerHTML="<div class='roll-empty'>本联队还没有花名册。<br>请在「＋新增联队/导入名单」导入排表名单。</div>";
     $("rollCount").textContent="应到 0";$("rollBar").style.width="0%";
     $("rollLive").textContent="";$("rollSave").disabled=true;return;}
   $("rollCount").innerHTML="已确认 <b>"+confirmed+"</b>/"+total;
   $("rollBar").style.width=(confirmed/total*100)+"%";
-  $("rollLive").innerHTML="到场 <b>"+c.ok+"</b> · 去他队 <b>"+c.away+"</b> · 病假 <b>"+c.sick+"</b> · 事假 <b>"+c.personal+"</b> · 伤病 <b>"+c.injured+"</b> · 缺勤 <b>"+c.absent+"</b>";
+  $("rollLive").innerHTML="到场 <b>"+c.ok+"</b> · 病假 <b>"+c.sick+"</b> · 事假 <b>"+c.personal+"</b> · 伤病 <b>"+c.injured+"</b> · 缺勤 <b>"+c.absent+"</b>";
   $("rollSave").disabled=confirmed<total;
   const badOnly=rollFilterBad,kw=rollKW.trim();
-  const others=loadTeams().filter(x=>x.id!==rollTeam);
   roster.forEach(p=>{
     const cur=st[p.pid]||{};
-    const isBad=cur.st&&cur.st!=="ok";
-    if(badOnly&&!isBad)return;
+    if(badOnly&&cur.st!=="ok")return;
     if(kw&&!String(p.name).includes(kw))return;
     const row=document.createElement("div");row.className="rc-row";row.dataset.pid=p.pid;
     const nm=document.createElement("span");nm.className="nm";nm.textContent=p.name;
     row.appendChild(nm);
     const chips=document.createElement("span");chips.className="rc-chips";
     RORD.forEach(k=>{
-      const b=document.createElement("button");b.type="button";b.className="rc-chip"+(cur.st===k?" picked ":"")+(cur.st===k?RST[k].c:"");
+      const b=document.createElement("button");b.type="button";b.className="rc-chip"+(cur.st===k?" picked "+RST[k].c:"");
       b.dataset.st=k;b.textContent=RST[k].t;
-      if(cur.st===k&&k==="away"){b.textContent+="→"+(cur.to?teamName(cur.to):"?");}
       chips.appendChild(b);
     });
     row.appendChild(chips);
-    if(cur.st==="away"){
-      const sel=document.createElement("select");sel.className="rc-away-sel";
-      others.forEach(o=>{const op=document.createElement("option");op.value=o.id;op.textContent=o.id+" "+o.name;sel.appendChild(op);});
-      if(cur.to&&others.some(o=>o.id===cur.to))sel.value=cur.to;
-      sel.onchange=()=>{const s2=rollState(rollTeam);s2[p.pid]={st:"away",to:sel.value};saveRollState(rollTeam,s2);renderRoll();};
-      row.appendChild(sel);
-    }
     list.appendChild(row);
   });
   if(!list.children.length)list.innerHTML="<div class='roll-empty'>没有符合筛选的人。</div>";
@@ -1222,54 +1194,34 @@ function setPerson(pid,st){
   const team=rollTeam;if(!team)return;
   const cur=rollState(team);
   cur[pid]=cur[pid]||{};
-  if(st==="away"){
-    if(cur[pid].st==="away"){delete cur[pid];}        // 再点取消
-    else{cur[pid]={st:"away",to:firstOtherTeam(team)};}
-  }else{
-    if(cur[pid].st===st)delete cur[pid];              // 再点取消（可返回未确认）
-    else cur[pid]={st:st};
-  }
+  if(cur[pid].st===st)delete cur[pid];              // 再点取消
+  else cur[pid]={st:st};
   if(!cur[pid].st)delete cur[pid];
   saveRollState(team,cur);
   renderRoll();
 }
-function firstOtherTeam(teamId){const o=loadTeams().find(x=>x.id!==teamId);return o?o.id:"";}
 function rollSave(){
   const team=rollTeam;if(!team)return;
   const roster=rosterOf(team);
   const st=rollState(team);
   if(Object.keys(st).length<roster.length){alert("还有 "+(roster.length-Object.keys(st).length)+" 人未点名，全部点完才能保存。");return;}
   const c=rollSummary(st);
-  const actual=c.ok+c.away;                 // 人员口径：去他队仍在训 → 计入实到
+  const actual=c.ok;                        // 名单归属即考勤归属（人不再跨队借调）
   const all=loadReports();const day=all[curDate]||{};
   day[team]={actual:String(actual),sick:String(c.sick),personal:String(c.personal),injured:String(c.injured),
     reporter:curAdminName()||"",ts:nowFmt(),_roll:true};
   all[curDate]=day;saveReports(all);
-  // 签入单聚合：先清空 from=本队 的当日单，再按「去他队」人数生成
-  const transAll=loadTrans();const dayT=(transAll[curDate]||[]).filter(x=>x.from!==team);
-  const byTo={};
-  Object.values(st).forEach(v=>{if(v.st==="away"&&v.to){byTo[v.to]=(byTo[v.to]||0)+1;}});
-  Object.entries(byTo).forEach(([to,cnt])=>{
-    dayT.push({id:uid(),from:team,to,count:String(cnt),note:"点名生成",reporter:curAdminName()||"",ts:nowFmt(),_src:curAdminName()||"",_roll:true});
-  });
-  if(dayT.length)transAll[curDate]=dayT;else delete transAll[curDate];
-  saveTrans(transAll);
   closeRoll();
   render();
-  autoPush("both");   // 点名结果自动上云
-  alert("✅ 已按点名写入当日日报：实到 "+actual+"（到场 "+c.ok+" + 去他队 "+c.away+"）· 病假 "+c.sick+" · 事假 "+c.personal+" · 伤病 "+c.injured+" · 缺勤 "+c.absent+(c.away?"\n已自动生成签入单。":""));
+  autoPush("report");   // 点名结果自动上云
+  alert("✅ 已按点名写入当日日报：实到 "+actual+" · 病假 "+c.sick+" · 事假 "+c.personal+" · 伤病 "+c.injured+" · 缺勤 "+c.absent);
 }
-
-/* ---------- 回传数据（生成回传包）+ 接收合并 ---------- */
 function collectMyPayload(){
   const teams=visibleTeams();
   const reps=dayReport(curDate);
-  const tdata={},trans={};
+  const tdata={};
   teams.forEach(t=>{const rec=reps[t.id];if(rec&&Object.keys(rec).length)tdata[t.id]=rec;});
-  const ts=dayTrans(curDate);
-  const myFrom=new Set(teams.map(t=>t.id));
-  ts.forEach(x=>{if(myFrom.has(x.from))trans[x.id]=x;});
-  return {date:curDate,admin:curAdminName(),teams:tdata,trans};
+  return {date:curDate,admin:curAdminName(),teams:tdata};
 }
 function downloadJson(filename,obj){
   const blob=new Blob([JSON.stringify(obj,null,1)],{type:"application/json;charset=utf-8"});
@@ -1279,30 +1231,23 @@ function downloadJson(filename,obj){
 async function doSubmit(){
   const admin=curAdminName();if(!admin||isSuper())return;
   const p=collectMyPayload();
-  const filled=Object.keys(p.teams).length,total=visibleTeams().length,tCnt=Object.keys(p.trans).length;
-  if(!filled&&!tCnt){alert("名下还没有填报数据，先填「实到/病假/事假/伤病见习」或点名后再回传。");return;}
+  const filled=Object.keys(p.teams).length,total=visibleTeams().length;
+  if(!filled){alert("名下还没有填报数据，先填「实到/病假/事假/伤病见习」或点名后再回传。");return;}
   if(total>filled&&!confirm("名下 "+total+" 个联队中只填报了 "+filled+" 个，未填的队不会回传（允许部分回传）。\n确定回传？"))return;
   const ts=nowFmt();
-  // 云端优先：日报 + 签入两笔写入（并发写，故障任一 → 降级文件）
-  const push=async()=>{
-    const r1=await pushCloud(p.date,admin,"report",{teams:p.teams});
-    const r2=await pushCloud(p.date,admin,"transfer",{trans:p.trans});
-    return r1&&r2;
-  };
-  const okCloud=await push();
+  const okCloud=await pushCloud(p.date,admin,"report",{teams:p.teams});
   const sl=loadSubmit();const day=sl[p.date]||{};
   if(okCloud){
     day[admin]={ts,mode:"cloud"};
     setCloudUI("☁ 已同步 "+ts.slice(11,16),"ok");
     await syncFromCloud(p.date,false);
     render();
-    alert("✅ 已回传线上（"+filled+" 个联队"+(tCnt?"、"+tCnt+" 条签入":"")+"）——超级管理员刷新即可看到。");
+    alert("✅ 已回传线上（"+filled+" 个联队）——超级管理员刷新即可看到。");
   }else{
-    // 离线降级：生成回传文件
-    const payload={fmt:SUBMIT_FMT,ver:SUBMIT_VER,date:p.date,admin,exportedAt:ts,teams:p.teams,trans:p.trans};
+    const payload={fmt:SUBMIT_FMT,ver:SUBMIT_VER,date:p.date,admin,exportedAt:ts,teams:p.teams,trans:{}};
     downloadJson("回传_"+p.date+"_"+admin+".mtreport.json",payload);
     day[admin]={ts,mode:"file"};
-    alert("⚠ 线上回传失败（网络不通？），已改为生成回传文件：\n"+filled+" 个联队"+(tCnt?"、"+tCnt+" 条签入":"")+"。\n请把文件发给超级管理员导入。");
+    alert("⚠ 线上回传失败（网络不通？），已改为生成回传文件：\n"+filled+" 个联队。\n请把文件发给超级管理员导入。");
   }
   sl[p.date]=day;saveSubmit(sl);
   updateSubmitUI();
@@ -1541,7 +1486,6 @@ $("btnSubmit").onclick=doSubmit;
 $("btnInbox").onclick=()=>$("fileSubmit").click();
 $("fileSubmit").onchange=e=>{if(e.target.files[0])doInbox(e.target.files[0]);e.target.value="";};
 $("btnExportDaily").onclick=exportDaily;
-$("btnTransExport").onclick=exportTrans;
 /* ---- 新增联队 / 导入名单（面板合一） ---- */
 function openAddTeam(){
   if(!isSuper())return;
@@ -1581,7 +1525,6 @@ $("btnClearDay").onclick=async()=>{
   render();
   alert("✅ 已清空 "+curDate+" 全部数据（云端+本机）。");
 };
-$("btnTransAdd").onclick=()=>openModal(null);
 $("fCancel").onclick=()=>$("mask").classList.remove("show");
 $("fOk").onclick=doAddTrans;
 $("mask").addEventListener("click",e=>{if(e.target===$("mask"))$("mask").classList.remove("show");});
@@ -1592,7 +1535,8 @@ document.addEventListener("click",e=>{
   const rcc=e.target.closest("#rollList .rc-chip");
   if(rcc){const row=rcc.closest(".rc-row");if(row)setPerson(row.dataset.pid,rcc.dataset.st);return;}
   const tf=e.target.closest(".tf-btn");
-  if(tf){if(!canSeeTeam(tf.dataset.id))return;openModal(tf.dataset.id);return;}
+  if(tf){if(!isSuper()){alert("人员划归仅超级管理员可操作，请在「联队名单管理」处理。");return;}
+    if(!canSeeTeam(tf.dataset.id))return;tmSel=tf.dataset.id;$("maskTeams").classList.add("show");renderTmTeams();renderTmMembers();return;}
   const un=e.target.closest(".undo");
   if(un){undoTrans(un.dataset.undo);return;}
   const ex=e.target.closest("[data-exp]");
@@ -2032,7 +1976,8 @@ function renderTmMembers(){
     const row=document.createElement("div");
     row.style.cssText="display:flex;gap:6px;align-items:center;padding:3px 2px;font-size:13px";
     row.innerHTML="<b>"+esc(p.name)+"</b>"+(p.sid?"<span style='color:var(--sub);font-size:12px'>"+esc(p.sid)+"</span>":"")+
-      "<span class='spacer'></span><button class='tbtn small' data-pid='"+p.pid+"' data-act='ren'>改名</button>"+
+      "<span class='spacer'></span><button class='tbtn small' data-pid='"+p.pid+"' data-act='mv' title='划归到其他联队'>⇄ 移</button>"+
+      "<button class='tbtn small' data-pid='"+p.pid+"' data-act='ren'>改名</button>"+
       "<button class='tbtn small danger' data-pid='"+p.pid+"' data-act='del'>删</button>";
     box.appendChild(row);
   });
@@ -2043,6 +1988,15 @@ function tmSave(){
 function tmMemberAct(pid,act){
   const teamId=tmSel;if(!teamId)return;
   const roster=rosterOf(teamId);const p=roster.find(x=>x.pid===pid);if(!p)return;
+  if(act==="mv"){
+    mvFrom=teamId;mvPid=pid;
+    const p2=roster.find(x=>x.pid===pid);
+    $("mvWho").textContent=p2?p2.name+(p2.sid?"("+p2.sid+")":""):pid;
+    const sel=$("mvTo");sel.innerHTML="";
+    loadTeams().filter(x=>x.id!==teamId).forEach(x=>{const o=document.createElement("option");o.value=x.id;o.textContent=x.id+" "+x.name;sel.appendChild(o);});
+    $("maskMove").classList.add("show");
+    return;
+  }
   if(act==="ren"){
     const n=prompt("改名（保留原学号）：",p.name);if(n==null)return;
     const all=loadRoster();const arr=all[teamId]||[];
@@ -2085,6 +2039,38 @@ $("btnTeamMgr").onclick=openTeamsMgr;
 $("tmClose").onclick=()=>{$("maskTeams").classList.remove("show");tmSel=null;};
 $("maskTeams").addEventListener("click",e=>{if(e.target===$("maskTeams")){$("maskTeams").classList.remove("show");tmSel=null;}});
 $("tmAdd").onclick=tmAddMember;
+let mvFrom=null,mvPid=null;
+$("mvCancel").onclick=()=>$("maskMove").classList.remove("show");
+$("mvOk").onclick=tmMoveConfirm;
+$("maskMove").addEventListener("click",e=>{if(e.target===$("maskMove"))$("maskMove").classList.remove("show");});
+function tmMoveConfirm(){
+  const from=mvFrom,pid=mvPid,to=$("mvTo").value;
+  if(!from||!pid||!to){alert("请选择目标联队");return;}
+  const src=loadRoster();const arr=src[from]||[];
+  const p=arr.find(x=>x.pid===pid);if(!p){alert("成员不存在，可能已被删除");return;}
+  const dest=src[to]||[];
+  if(p.sid&&dest.some(x=>x.sid===p.sid)){alert("目标联队已存在学号 "+p.sid+" 的成员，请核对后再划归。");return;}
+  const np=Object.assign({},p);
+  src[from]=arr.filter(x=>x.pid!==pid);
+  np.pid=dest.length+1;dest.push(np);
+  src[to]=dest;
+  src[from].forEach((q,i)=>{q.pid=i+1;});
+  // 当日点名草稿：把该人状态随人到新队
+  const rl=loadRoll();const d=rl[curDate]||{};
+  if(d[from]&&d[from][pid]){
+    const tmpl=d[to]||(d[to]={});
+    tmpl[np.pid]={st:d[from][pid].st};
+    delete d[from][pid];
+    rl[curDate]=d;saveRoll(rl);
+  }
+  saveRoster(src);
+  const hadReport=!!dayReport(curDate)[from];
+  $("maskMove").classList.remove("show");
+  mvFrom=null;mvPid=null;
+  tmSel=from;render();renderTmMembers();pushCfg();
+  alert("✅ 已将 "+p.name+" 划归到 "+teamNameX(to)+"。应到已自动调整"+(hadReport?"；源队今日日报已生成过，请到源队点名界面重新保存以更新数字。":"（当日数据随人到新队）")+"。");
+}
+
 $("tmMembers").addEventListener("click",e=>{
   const b=e.target.closest("button[data-act]");
   if(b)tmMemberAct(Number(b.dataset.pid),b.dataset.act);
