@@ -70,6 +70,12 @@
   .chip.done{background:#DCFCE7;color:#166534}
   .tag{display:inline-block;background:var(--green-l);color:var(--green-d);font-size:11px;border-radius:4px;padding:0 5px;margin-left:4px}
   .tr-over td{background:#FEF2F2!important}
+  .tr-total td{background:#F0F7F0!important;font-weight:800;border-top:2px solid var(--green-l);color:var(--green-d)}
+  .tr-total td.num{color:var(--green-d)}
+  .mini{font-size:12px;color:var(--sub)}
+  .submit-state{font-size:12px;font-weight:600;padding:6px 2px}
+  .submit-state.ok{color:var(--green-d)}
+  .submit-state.no{color:var(--warn)}
   .empty{text-align:center;color:var(--sub);padding:30px 0;font-size:13px}
   .tip{font-size:12px;color:var(--sub);line-height:1.7;margin-top:10px;background:#F9FAF9;border:1px dashed var(--line);border-radius:8px;padding:10px 12px}
   .trans-list{list-style:none}
@@ -152,6 +158,10 @@
     <div class="toolbar">
       <button class="tbtn primary" id="btnAddTeam">＋ 新增联队</button>
       <button class="tbtn" id="btnClearDay" style="color:var(--bad)">清空当日回传</button>
+      <button class="tbtn primary" id="btnSubmit" style="display:none" title="把名下已填数据打包成回传文件，发给超级管理员">📤 回传数据</button>
+      <button class="tbtn" id="btnInbox" style="display:none" title="接收管理员发来的回传文件并合并">📥 接收回传</button>
+      <input type="file" id="fileSubmit" accept=".json,.mtreport,application/json" hidden>
+      <span class="submit-state no" id="mySubmitState" style="display:none"></span>
       <span class="legend" style="margin-left:auto">
         <span>🟢 <b>已回传</b></span><span>🟡 部分</span><span>⚪ 待回传</span>
       </span>
@@ -174,6 +184,7 @@
           <th style="width:80px">操作</th>
         </tr></thead>
         <tbody id="tbody"></tbody>
+        <tfoot id="tfoot" style="display:none"></tfoot>
       </table>
     </div>
     <div class="empty" id="emptyBox" style="display:none">
@@ -184,9 +195,10 @@
     </div>
     <div class="tip" id="tipBox">
       💡 <b>填报</b>：点「实到 / 病假 / 事假 / 伤病见习」的 <b>–</b> 直接输入数字，回车或点别处保存。缺勤自动算。<br>
-      👤 <b>身份</b>：普通管理员只看到并填报自己负责的联队；超级管理员可看全部、做汇总统计。<br>
+      📤 <b>回传</b>：普通管理员填完点「回传数据」→ 生成回传文件 → 发给超级管理员；超管点「接收回传」导入合并（云端自动同步后续开通）。<br>
+      👤 <b>身份</b>：普通管理员只看/填报自己负责的联队；超级管理员看全部、负责收齐统计。<br>
       ⇄ <b>跨队签入</b>：队员去其他联队训练 → 该行「⇄ 签入」或下方「＋ 登记签入」。<br>
-      ⚠️ 数据只存在<b>当前设备浏览器</b>，填完请「⬇ 导出当日汇总 CSV」留档。
+      ⚠️ 数据只存在<b>当前设备浏览器</b>，请养成「填完就回传、文件即备份」的习惯。
     </div>
   </div>
 
@@ -200,6 +212,18 @@
     <ul class="trans-list" id="transList"></ul>
     <div class="empty" id="transEmpty" style="padding:16px 0">
       没有与你相关的签入登记。队员去其他联队训练时点「＋ 登记签入」。
+    </div>
+  </div>
+
+  <div class="card" id="statusCard" style="display:none">
+    <div class="toolbar">
+      <h2 style="margin:0">👥 各管理员回传状态 <span style="font-size:12px;color:var(--sub)">（今日 · 以本机接收记录为准）</span></h2>
+      <span class="spacer"></span>
+      <span class="mini" id="statusSummary"></span>
+    </div>
+    <ul class="trans-list" id="statusList"></ul>
+    <div class="empty" id="statusEmpty" style="padding:14px 0">
+      还没有收到任何管理员的回传。等他们点「📤 回传数据」把文件发你，你点上方「📥 接收回传」导入。
     </div>
   </div>
 </div>
@@ -244,7 +268,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.3（管理员视角） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.4（回传闭环+超管统计） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -261,7 +285,9 @@
  *   mtr_admin_cur   : 当前管理员名
  * ========================================================= */
 const LS_TEAMS="mtr_teams_v1",LS_REPORTS="mtr_reports_v1",LS_TRANS="mtr_transfers_v1",
-      LS_ADMINS="mtr_admins_v1",LS_ADMINCUR="mtr_admin_cur";
+      LS_ADMINS="mtr_admins_v1",LS_ADMINCUR="mtr_admin_cur",
+      LS_SUBMIT="mtr_submitlog_v1",LS_INBOX="mtr_inbox_v1";
+const SUBMIT_FMT="mt-report-submit",SUBMIT_VER=1;
 const MANUAL=["actual","sick","personal","injured"];
 const FLABEL={actual:"实到",sick:"病假",personal:"事假",injured:"伤病见习"};
 
@@ -293,6 +319,11 @@ function dayTrans(date){return loadTrans()[date]||[];}
 function loadAdmins(){try{return JSON.parse(localStorage.getItem(LS_ADMINS))||[];}catch(e){return [];}}
 function saveAdmins(a){localStorage.setItem(LS_ADMINS,JSON.stringify(a));}
 function curAdminName(){return localStorage.getItem(LS_ADMINCUR)||"";}
+function loadSubmit(){try{return JSON.parse(localStorage.getItem(LS_SUBMIT))||{};}catch(e){return {};}}
+function saveSubmit(s){localStorage.setItem(LS_SUBMIT,JSON.stringify(s));}
+function loadInbox(){try{return JSON.parse(localStorage.getItem(LS_INBOX))||{};}catch(e){return {};}}
+function saveInbox(s){localStorage.setItem(LS_INBOX,JSON.stringify(s));}
+function dayInbox(date){return loadInbox()[date]||[];}
 
 const TEAM_SEED=[["L01","第1联队",52],["L02","第2联队",50],["L03","第3联队",55],["L04","第4联队",48],
   ["L05","第5联队",53],["L06","第6联队",50],["L07","第7联队",56],["L08","第8联队",49],
@@ -396,6 +427,32 @@ function paintStats(){
   $("stTransfer").textContent=trans;
   $("teamCount").textContent=teams.length;
   $("teamTotal").textContent=loadTeams().length;
+  fillTotal();
+}
+/* 合计行：只统计已开始填报的队（未回传的队数字为空，混进合计会误导） */
+function fillTotal(){
+  const tf=$("tfoot");if(!tf)return;
+  const teams=visibleTeams();
+  const done=teams.filter(t=>teamDerived(t.id).filled>0);
+  tf.innerHTML="";tf.style.display="none";
+  if(!done.length)return;
+  let exp=0,actual=0,sick=0,personal=0,injured=0,absent=0,out=0,inn=0;
+  done.forEach(t=>{
+    const e=expectedOf(t.id);if(Number.isFinite(e))exp+=e;
+    const d=teamDerived(t.id);
+    actual+=d.actual;sick+=d.sick;personal+=d.personal;injured+=d.injured;
+    const ab=calcAbsent(t.id);if(ab!==null)absent+=ab;
+  });
+  teams.forEach(t=>{const d=teamDerived(t.id);out+=d.out;inn+=d.inn;});
+  const att=actual+personal+sick+injured; // 人数核算参考
+  tf.style.display="";
+  const tr=document.createElement("tr");tr.className="tr-total";
+  tr.innerHTML="<td></td><td>合计（已填 "+done.length+"/"+teams.length+" 队）</td>"+
+    "<td class='num'>"+exp+"</td>"+
+    "<td class='num'>"+actual+"</td><td class='num'>"+sick+"</td><td class='num'>"+personal+"</td><td class='num'>"+injured+"</td>"+
+    "<td class='num'>"+absent+(att>exp?"<span class='tag' style='background:#FEE2E2;color:#991B1B'>超填</span>":"")+"</td>"+
+    "<td class='num'>"+(out||"0")+"</td><td class='num'>"+(inn||"0")+"</td><td></td><td></td><td></td>";
+  tf.appendChild(tr);
 }
 
 /* ---------- 渲染 ---------- */
@@ -415,7 +472,41 @@ function renderAdminSel(){
     if(a.name===cur)o.selected=true;
     sel.appendChild(o);
   });
-  $("btnAdmins").style.display=isSuper()?"":"none";
+}
+/* 角色相关的按钮/卡片显隐与状态刷新（超管 vs 普通管理员） */
+function refreshRoleUI(){
+  const sup=isSuper();
+  $("btnAdmins").style.display=sup?"":"none";
+  $("btnSubmit").style.display=sup?"none":"";
+  $("btnInbox").style.display=sup?"":"none";
+  const card=$("statusCard");card.style.display=sup?"":"none";
+  if(sup)renderAdminStatus();
+  updateSubmitUI();
+}
+function renderAdminStatus(){
+  const admins=loadAdmins().filter(a=>a.role!=="super");
+  const inbox=dayInbox(curDate);
+  const known=new Set(admins.map(a=>a.name));
+  const list=$("statusList");list.innerHTML="";
+  const doneN=inbox.filter(r=>known.has(r.admin)).length;
+  $("statusSummary").textContent=admins.length?("已回传 "+doneN+"/"+admins.length):"";
+  if(!admins.length){$("statusEmpty").style.display="";$("statusEmpty").textContent="还没有普通管理员账号，去「⚙ 管理员」添加后再接收回传。";return;}
+  $("statusEmpty").style.display=inbox.length?"none":"";
+  const addRow=(name,badge,meta)=>{
+    const li=document.createElement("li");
+    li.innerHTML="<b>"+esc(name)+"</b>"+badge+(meta?"<span class='meta'>"+meta+"</span>":"");
+    list.appendChild(li);
+  };
+  admins.forEach(a=>{
+    const rec=inbox.find(x=>x.admin===a.name);
+    const scope=a.teams&&a.teams.length?a.teams.map(teamName).join("、"):"（未分配）";
+    addRow(a.name,
+      rec?"<span class='chip done'>✅ "+esc(rec.receivedAt)+"</span>":"<span class='chip wait'>⏳ 未回传</span>",
+      "负责："+esc(scope)+(rec?" · 含 "+rec.teamCount+" 队/"+rec.transCount+" 签入":""));
+  });
+  inbox.filter(r=>!known.has(r.admin)).forEach(rec=>{
+    addRow(rec.admin+"（未配置的管理员）","<span class='chip part'>📥 "+esc(rec.receivedAt)+"</span>","含 "+rec.teamCount+" 队/"+rec.transCount+" 签入");
+  });
 }
 function renderTransList(){
   const ts=dayTrans(curDate);
@@ -444,7 +535,7 @@ function render(){
   $("emptyBox").style.display=noTeams?"":"none";
   $("noScopeBox").style.display=noScope?"":"none";
   $("tipBox").style.display=(noTeams||noScope)?"none":"";
-  if(noTeams||noScope){paintStats();renderTransList();return;}
+  if(noTeams||noScope){paintStats();renderTransList();refreshRoleUI();return;}
   teams.forEach((t,i)=>{
     const tr=document.createElement("tr");
     tr.dataset.tid=t.id;
@@ -454,6 +545,7 @@ function render(){
   });
   paintStats();
   renderTransList();
+  refreshRoleUI();
 }
 
 /* ---------- 单元格编辑 ---------- */
@@ -551,20 +643,39 @@ function download(filename,content){
 function exportDaily(){
   const teams=visibleTeams();
   const lines=["联队编号,联队名称,应到,实到,病假,事假,伤病见习,缺勤,迁出,迁入,场地人数,填报人,填报时间,回传状态"];
+  let exp=0,actual=0,sick=0,personal=0,injured=0,absent=0,out=0,inn=0,filledCnt=0;
   teams.forEach(t=>{
     const d=teamDerived(t.id);
-    const exp=expectedOf(t.id);
-    const absent=calcAbsent(t.id);
+    const expT=expectedOf(t.id);
+    const absentT=calcAbsent(t.id);
     const st=rowStatus(d);
-    const site=(Number.isFinite(exp)?exp:0)+d.inn-d.out;
-    const row=[t.id,t.name,Number.isFinite(exp)?exp:"",
+    const site=(Number.isFinite(expT)?expT:0)+d.inn-d.out;
+    const row=[t.id,t.name,Number.isFinite(expT)?expT:"",
       d.rep?.actual??"",d.rep?.sick??"",d.rep?.personal??"",d.rep?.injured??"",
-      absent===null?"":absent,
+      absentT===null?"":absentT,
       d.out||"",d.inn||"",
       d.filled>0?site:"",
       d.rep?.reporter??"",d.rep?.ts??"",st.txt];
     lines.push(row.map(csvCell).join(","));
+    if(Number.isFinite(expT))exp+=expT;
+    actual+=d.actual;sick+=d.sick;personal+=d.personal;injured+=d.injured;
+    if(absentT!==null)absent+=absentT;
+    out+=d.out;inn+=d.inn;
+    if(d.filled>0)filledCnt++;
   });
+  if(filledCnt>0){
+    lines.push([,"合计（已填 "+filledCnt+"/"+teams.length+" 队）",exp,actual,sick,personal,injured,absent,out||"",inn||"",actual+inn-out,"","",""].map(csvCell).join(","));
+  }
+  if(isSuper()){
+    const admins=loadAdmins().filter(a=>a.role!=="super");
+    const inbox=dayInbox(curDate);
+    lines.push("");
+    lines.push("【各管理员回传状态（本机接收记录）】");
+    admins.forEach(a=>{
+      const rec=inbox.find(x=>x.admin===a.name);
+      lines.push([a.name,rec?"已回传 "+rec.receivedAt:"未回传",a.teams&&a.teams.length?a.teams.join("|"):""].map(csvCell).join(","));
+    });
+  }
   download("军训联队日报_"+curDate+"_"+(curAdminName()||"全部")+".csv",lines.join("\r\n"));
 }
 function exportTrans(){
@@ -579,6 +690,92 @@ function exportTrans(){
 }
 function exportTemplate(){
   download("军训联队名单模板.csv",["联队编号,联队名称,应到人数","L01,第1联队,52","L02,第2联队,50","L03,第3联队,55"].join("\r\n"));
+}
+
+/* ---------- 回传数据（生成回传包）+ 接收合并 ---------- */
+function collectMyPayload(){
+  const teams=visibleTeams();
+  const reps=dayReport(curDate);
+  const tdata={},trans={};
+  teams.forEach(t=>{const rec=reps[t.id];if(rec&&Object.keys(rec).length)tdata[t.id]=rec;});
+  const ts=dayTrans(curDate);
+  const myFrom=new Set(teams.map(t=>t.id));
+  ts.forEach(x=>{if(myFrom.has(x.from))trans[x.id]=x;});
+  return {date:curDate,admin:curAdminName(),teams:tdata,trans};
+}
+function downloadJson(filename,obj){
+  const blob=new Blob([JSON.stringify(obj,null,1)],{type:"application/json;charset=utf-8"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},200);
+}
+function doSubmit(){
+  const admin=curAdminName();if(!admin||isSuper())return;
+  const p=collectMyPayload();
+  const filled=Object.keys(p.teams).length,total=visibleTeams().length,tCnt=Object.keys(p.trans).length;
+  if(!filled&&!tCnt){alert("名下还没有填报数据，先填「实到/病假/事假/伤病见习」再回传。");return;}
+  if(total>filled&&!confirm("名下 "+total+" 个联队中只填报了 "+filled+" 个，未填的队不会进入回传包（允许部分回传）。\n确定生成回传文件？"))return;
+  const payload={fmt:SUBMIT_FMT,ver:SUBMIT_VER,date:p.date,admin:admin,exportedAt:nowFmt(),teams:p.teams,trans:p.trans};
+  downloadJson("回传_"+p.date+"_"+admin+".mtreport.json",payload);
+  const sl=loadSubmit();const day=sl[p.date]||{};day[admin]=nowFmt();sl[p.date]=day;saveSubmit(sl);
+  updateSubmitUI();
+  alert("✅ 回传文件已生成（"+filled+" 个联队"+(tCnt?"、"+tCnt+" 条签入":"")+"）。\n请把该文件发给超级管理员。");
+}
+function updateSubmitUI(){
+  const s=$("mySubmitState");
+  if(!s)return;
+  s.style.display=isSuper()?"none":"";
+  if(isSuper())return;
+  const rec=(loadSubmit()[curDate]||{})[curAdminName()];
+  if(rec){s.className="submit-state ok";s.textContent="✅ 上次回传 "+rec+"（请将文件发给超管）";}
+  else{s.className="submit-state no";s.textContent="⏳ 今日未回传";}
+}
+function readSubmitFile(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>{
+      try{
+        const o=JSON.parse(String(r.result).replace(/^\uFEFF/,""));
+        if(!o||o.fmt!==SUBMIT_FMT)return rej(new Error("不是有效的回传文件（格式标识不符）"));
+        if(o.ver!==SUBMIT_VER)return rej(new Error("回传文件版本不兼容（文件 v"+o.ver+"，当前 v"+SUBMIT_VER+"）"));
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(o.date||"")||!o.admin)return rej(new Error("文件缺少日期/管理员信息"));
+        res(o);
+      }catch(e){rej(new Error("文件解析失败："+e.message));}
+    };
+    r.onerror=()=>rej(new Error("读取文件失败"));
+    r.readAsText(file);
+  });
+}
+function mergeSubmit(o){
+  const all=loadReports();const day=all[o.date]||{};
+  const transAll=loadTrans();const dayIn=transAll[o.date]||[];
+  let added=0,skipped=0,transAdded=0,transRemoved=0;
+  Object.entries(o.teams||{}).forEach(([tid,rec])=>{
+    const cur=day[tid];
+    if(!cur||String(rec.ts||"")>=String(cur.ts||"")){day[tid]={...rec};added++;}
+    else skipped++;
+  });
+  if(Object.keys(day).length)all[o.date]=day;else delete all[o.date];
+  saveReports(all);
+  const src=o.admin;
+  let newDay=[];
+  dayIn.forEach(x=>{if(x._src===src)transRemoved++;else newDay.push(x);});
+  Object.values(o.trans||{}).forEach(t=>{newDay.push({...t,_src:src});transAdded++;});
+  if(newDay.length)transAll[o.date]=newDay;else delete transAll[o.date];
+  saveTrans(transAll);
+  const inb=loadInbox();const list=inb[o.date]||[];
+  const i=list.findIndex(x=>x.admin===src);
+  const rec={admin:src,exportedAt:o.exportedAt||"",receivedAt:nowFmt(),teamCount:added,transCount:transAdded};
+  if(i>=0)list[i]=rec;else list.push(rec);
+  inb[o.date]=list;saveInbox(inb);
+  return {added,skipped,transAdded,transRemoved};
+}
+async function doInbox(file){
+  let o;
+  try{o=await readSubmitFile(file);}catch(e){alert("❌ "+e.message);return;}
+  const r=mergeSubmit(o);
+  if(curDate!==o.date)curDate=o.date;
+  render();
+  alert("✅ 已接收「"+o.admin+"」的回传：日报 "+r.added+" 条"+(r.skipped?"（跳过本地更新更早的 "+r.skipped+" 条）":"")+"，签入 "+r.transAdded+" 条"+(r.transRemoved?"（清理其旧单 "+r.transRemoved+" 条）":"")+"。");
 }
 
 /* ---------- 签入登记 ---------- */
@@ -712,6 +909,9 @@ $("adminList").addEventListener("click",e=>{
   const ed=e.target.closest(".a-edit");if(ed){openAdminEditor(ed.dataset.name);return;}
   const del=e.target.closest(".a-del");if(del){delAdmin(del.dataset.name);return;}
 });
+$("btnSubmit").onclick=doSubmit;
+$("btnInbox").onclick=()=>$("fileSubmit").click();
+$("fileSubmit").onchange=e=>{if(e.target.files[0])doInbox(e.target.files[0]);e.target.value="";};
 $("btnTemplate").onclick=exportTemplate;
 $("btnExportDaily").onclick=exportDaily;
 $("btnTransExport").onclick=exportTrans;

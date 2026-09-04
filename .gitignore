@@ -1,5 +1,9 @@
 # 开发产物不入库
 _preview*.png
 _verify*.py
+_tmp_submit_files/
 __pycache__/
 *.log
+# 云端 Worker（独立部署，不入站点仓库）
+cloudflare-worker/
+node_modules/
