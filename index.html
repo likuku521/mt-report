@@ -183,6 +183,7 @@
   <div class="card">
     <div class="toolbar">
       <button class="tbtn primary" id="btnAddTeam">＋ 新增联队</button>
+      <button class="tbtn" id="btnTeamMgr" style="display:none" title="查看/删除联队、修改名单内人员（超管专属）">🧾 联队名单管理</button>
       <button class="tbtn" id="btnRegOpen" style="display:none" title="给花名册人员登记人脸（识别点名用，超管专属）">🙂 人脸登记</button>
       <button class="tbtn" id="btnClearDay" style="color:var(--bad)">清空当日回传</button>
       <button class="tbtn primary" id="btnSubmit" style="display:none" title="把名下已填数据打包成回传文件，发给超级管理员">📤 回传数据</button>
@@ -389,8 +390,32 @@
   </div>
 </div>
 
+<!-- 联队名单管理弹窗 -->
+<div class="mask" id="maskTeams">
+  <div class="modal modal-xl" style="max-width:640px">
+    <h3>🧾 联队名单管理 <span class="badge super">超管专属</span></h3>
+    <div style="font-size:12.5px;color:var(--sub);margin-bottom:8px">选择联队可编辑其成员名单（增/删/改名）。删除联队将连同其花名册一并移除（历史日报保留但不再显示）。</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <div style="flex:1;min-width:210px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px">联队（<span id="tmCount">0</span>）</div>
+        <div id="tmTeams" style="max-height:40vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px"></div>
+      </div>
+      <div style="flex:1.4;min-width:260px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:4px" id="tmMembersTitle">成员名单</div>
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <input type="text" id="tmNewName" placeholder="姓名" style="flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 8px">
+          <input type="text" id="tmNewSid" placeholder="学号(可选)" style="width:110px;border:1px solid var(--line);border-radius:8px;padding:6px 8px">
+          <button class="tbtn primary" id="tmAdd">＋添加</button>
+        </div>
+        <div id="tmMembers" style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:4px"></div>
+      </div>
+    </div>
+    <div class="modal-btns"><button class="btn plain" id="tmClose">关闭</button></div>
+  </div>
+</div>
+
 <footer>
-  军训联队数据回传 · v0.10.1（超管门禁） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.11（联队名单管理） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -636,7 +661,7 @@ function refreshRoleUI(){
   $("btnInbox").style.display=sup?"":"none";
   const card=$("statusCard");card.style.display=sup?"":"none";
   // 配置类操作（名单/花名册/清空/新增联队/恢复示例）仅超管可见 —— 普通管理员只做填报+实时回传
-  ["btnTemplate","btnImportTeams","btnRosterTpl","btnRosterImport","btnAddTeam","btnClearDay","btnReset","btnRegOpen"].forEach(id=>{
+  ["btnTemplate","btnImportTeams","btnRosterTpl","btnRosterImport","btnAddTeam","btnClearDay","btnReset","btnRegOpen","btnTeamMgr"].forEach(id=>{
     const el=$(id);if(el)el.style.display=sup?"":"none";
   });
   if(sup)renderAdminStatus();
@@ -1919,6 +1944,115 @@ $("btnReco").onclick=openReco;
 $("recoClose").onclick=()=>{stopRecoAll();$("maskReco").classList.remove("show");recoTeam=null;};
 $("maskReco").addEventListener("click",e=>{if(e.target===$("maskReco")){stopRecoAll();$("maskReco").classList.remove("show");recoTeam=null;}});
 $("recoStop").onclick=recoWrite;
+
+/* ---------- 联队名单管理 ---------- */
+let tmSel=null;   // 当前选中联队 id
+function tmNormalizeRoster(teamId){
+  const all=loadRoster();const arr=all[teamId]||[];
+  arr.forEach((p,i)=>{p.pid=i+1;});
+  if(arr.length)all[teamId]=arr;else delete all[teamId];
+  saveRoster(all);
+}
+function openTeamsMgr(){
+  if(!isSuper())return;
+  tmSel=null;$("maskTeams").classList.add("show");
+  renderTmTeams();
+  if(tmSel)renderTmMembers();
+}
+function renderTmTeams(){
+  const teams=loadTeams();
+  $("tmCount").textContent=teams.length;
+  const box=$("tmTeams");box.innerHTML="";
+  if(!teams.length){box.innerHTML='<div style="color:var(--sub);text-align:center;padding:20px">还没有联队，先导入名单。</div>';return;}
+  teams.forEach(t=>{
+    const rn=(loadRoster()[t.id]||[]).length;
+    const row=document.createElement("div");
+    row.style.cssText="display:flex;gap:6px;align-items:center;padding:5px 6px;border-radius:8px;cursor:pointer;font-size:13px;"+(tmSel===t.id?"background:var(--green-l);font-weight:700":"");
+    row.innerHTML="<b>"+esc(t.name)+"</b><span style='color:var(--sub)'>("+rn+"人)</span><span style='color:var(--grey);font-size:11px'>"+esc(t.id)+"</span>";
+    row.onclick=()=>{tmSel=t.id;renderTmTeams();renderTmMembers();};
+    box.appendChild(row);
+  });
+  if(!tmSel&&teams.length){tmSel=teams[0].id;renderTmTeams();}
+}
+function renderTmMembers(){
+  const teamId=tmSel;
+  $("tmMembersTitle").textContent="成员名单 · "+(tmSel?teamNameX(tmSel):"—");
+  const box=$("tmMembers");box.innerHTML="";
+  if(!teamId){return;}
+  const roster=rosterOf(teamId);
+  const ops=document.createElement("div");ops.style.cssText="display:flex;gap:6px;align-items:center;padding:4px 2px 8px;font-size:13px;flex-wrap:wrap";
+  ops.innerHTML="应到 <b>"+roster.length+"</b> 人"+
+    "<span class='spacer'></span>"+
+    "<button class='tbtn small' id='tmRename'>改联队名</button>"+
+    "<button class='tbtn small danger' id='tmDelTeam'>🗑 删除联队</button>";
+  box.appendChild(ops);
+  if(!roster.length){box.insertAdjacentHTML("beforeend","<div style='color:var(--sub);text-align:center;padding:18px'>该联队暂无成员名单，可用上方输入框添加。</div>");}
+  roster.forEach(p=>{
+    const row=document.createElement("div");
+    row.style.cssText="display:flex;gap:6px;align-items:center;padding:3px 2px;font-size:13px";
+    row.innerHTML="<b>"+esc(p.name)+"</b>"+(p.sid?"<span style='color:var(--sub);font-size:12px'>"+esc(p.sid)+"</span>":"")+
+      "<span class='spacer'></span><button class='tbtn small' data-pid='"+p.pid+"' data-act='ren'>改名</button>"+
+      "<button class='tbtn small danger' data-pid='"+p.pid+"' data-act='del'>删</button>";
+    box.appendChild(row);
+  });
+}
+function tmSave(){
+  tmNormalizeRoster(tmSel);renderTmMembers();render();pushCfg();
+}
+function tmMemberAct(pid,act){
+  const teamId=tmSel;if(!teamId)return;
+  const roster=rosterOf(teamId);const p=roster.find(x=>x.pid===pid);if(!p)return;
+  if(act==="ren"){
+    const n=prompt("改名（保留原学号）：",p.name);if(n==null)return;
+    const all=loadRoster();const arr=all[teamId]||[];
+    const q=arr.find(x=>x.pid===pid);if(!q)return;
+    q.name=n.trim()||q.name;all[teamId]=arr;saveRoster(all);
+    tmSave();
+  }else if(act==="del"){
+    if(!confirm("删除成员「"+p.name+"」？（若已有人脸特征/点名记录会一并失效）"))return;
+    const arr=roster.filter(x=>x.pid!==pid);saveRoster(Object.assign(loadRoster(),{[teamId]:arr}));
+    tmSave();
+  }
+}
+function tmTeamOps(act){
+  const teamId=tmSel;const teams=loadTeams();const t=teams.find(x=>x.id===teamId);if(!t)return;
+  if(act==="ren"){
+    const n=prompt("修改联队名称（保留编号）：",t.name);if(n==null)return;
+    t.name=n.trim()||t.name;saveTeams(teams);render();renderTmTeams();pushCfg();
+  }else if(act==="del"){
+    if(!confirm("删除联队「"+t.name+"」？将同时移除其花名册("+(rosterOf(teamId).length)+"人)、人脸特征；历史日报保留但不再显示。\n管理员名下若含此联队将自动移除。确认删除？"))return;
+    const ts=teams.filter(x=>x.id!==teamId);saveTeams(ts);
+    const rl=loadRoster();delete rl[teamId];saveRoster(rl);
+    const as=loadAdmins();as.forEach(a=>{if(a.teams)a.teams=a.teams.filter(x=>x!==teamId);});saveAdmins(as);
+    const cur=curAdminName();
+    if(cur===t.name||!loadAdmins().some(a=>a.name===cur)){const s=loadAdmins().find(x=>x.role==="super")||loadAdmins()[0];if(s)localStorage.setItem(LS_ADMINCUR,s.name);}
+    tmSel=null;render();renderAdminSel();pushCfg();renderTmTeams();
+    alert("已删除联队「"+t.name+"」。");
+  }
+}
+function tmAddMember(){
+  const teamId=tmSel;if(!teamId){alert("请先选择联队");return;}
+  const name=$("tmNewName").value.trim(),sid=$("tmNewSid").value.trim();
+  if(!name){alert("请输入姓名");return;}
+  const all=loadRoster();const arr=all[teamId]||[];
+  arr.push({pid:arr.length+1,name,sid:sid||undefined});
+  all[teamId]=arr;saveRoster(all);
+  $("tmNewName").value="";$("tmNewSid").value="";
+  tmSave();
+}
+$("btnTeamMgr").onclick=openTeamsMgr;
+$("tmClose").onclick=()=>{$("maskTeams").classList.remove("show");tmSel=null;};
+$("maskTeams").addEventListener("click",e=>{if(e.target===$("maskTeams")){$("maskTeams").classList.remove("show");tmSel=null;}});
+$("tmAdd").onclick=tmAddMember;
+$("tmMembers").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-act]");
+  if(b)tmMemberAct(Number(b.dataset.pid),b.dataset.act);
+});
+$("tmMembers").addEventListener("click",e=>{
+  const b=e.target.closest("#tmDelTeam, #tmRename");
+  if(!b)return;
+  tmTeamOps(b.id==="tmDelTeam"?"del":"ren");
+});
 
 /* ---------- init ---------- */
 if(!curAdminName()||!loadAdmins().some(a=>a.name===curAdminName())){
