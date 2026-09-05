@@ -375,7 +375,7 @@
     <h3>＋ 新增联队 / 导入名单 <span class="badge super">超管专属</span></h3>
     <div style="font-size:12.5px;color:var(--sub);margin-bottom:10px">两种方式：
       <b>手动</b>建一个空联队（稍后用「名单管理」加成员或直接导入）；
-      <b>导入文件</b>（xlsx/csv）：一个排一个 sheet 的学生表 → 自动建联队并带成员；含"联队编号"列的名单表 → 新增/更新联队。</div>
+      <b>导入文件</b>（xlsx/csv）：花名册排表 → 弹窗里<b>逐个 sheet 选择目标联队</b>（进已有联队或自动新建）；含"联队编号"列的名单表 → 新增/更新联队结构。</div>
     <div style="border:1px dashed var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
       <div style="font-size:13px;font-weight:700;margin-bottom:6px">① 手动建空联队</div>
       <div class="mrow">
@@ -393,6 +393,20 @@
         <div style="margin-top:6px;color:var(--sub)">💡 日常<b>单个联队</b>的花名册（加人/换名单）：打开顶部「😊 联队名单管理」→ 选中联队 → 用「⬇ 本队模板 / 📥 导入本队名单」——单 sheet，一次只动这一个联队。</div></div>
     </div>
     <div class="modal-btns"><button class="btn plain" id="addClose">关闭</button></div>
+  </div>
+</div>
+
+<!-- 花名册导入向导（选择每个 sheet 进哪个联队） -->
+<div class="mask" id="maskPick">
+  <div class="modal" style="max-width:600px">
+    <h3>📥 导入花名册 <span class="badge super">超管专属</span></h3>
+    <div style="font-size:12.5px;color:var(--sub);margin-bottom:8px">文件共 <b id="pickCount">0</b> 个工作表。请为每个有数据的表选择要导入的联队：
+      <b>进已有联队</b>=整体替换该联队名单（人脸需重登）；<b>＋自动新建</b>=按表名新建联队并导入。</div>
+    <div id="pickRows" style="max-height:38vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px"></div>
+    <div class="modal-btns">
+      <button class="btn plain" id="pickCancel">取消</button>
+      <button class="btn" id="pickOk">开始导入</button>
+    </div>
   </div>
 </div>
 
@@ -436,7 +450,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.6（单队花名册/删队不复活） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.7（复活链封堵+导入向导） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -530,7 +544,7 @@ function seedRosters(){
   });
   saveRoster(all);
 }
-function seedAll(){localStorage.removeItem(LS_DEL);saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));saveAdmins(ADMIN_SEED);seedRosters();}
+function seedAll(){saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));saveAdmins(ADMIN_SEED);seedRosters();}
 function seedTeams(){saveTeams(TEAM_SEED.map(s=>({id:String(s[0]),name:String(s[1]),expected:num(s[2])})));seedRosters();}
 function getTeam(id){return loadTeams().find(x=>x.id===id)||null;}
 
@@ -571,7 +585,7 @@ function rowOver(teamId){
 
 /* ---------- 状态 ---------- */
 let curDate=todayStr();
-if(!loadTeams().length||!loadAdmins().length)seedAll();
+if(!localStorage.getItem(LS_TEAMS))seedAll();
 
 /* ---------- 行构建 ---------- */
 function rowHtml(t,i){
@@ -656,7 +670,7 @@ function renderDateBar(){
 function renderAdminSel(){
   const admins=loadAdmins();const cur=curAdminName();
   const sel=$("adminSel");sel.innerHTML="";
-  if(!admins.length){seedAll();}
+  if(!admins.length&&!localStorage.getItem(LS_TEAMS)){seedAll();}
   if(!cur){
     const ph=document.createElement("option");ph.value="";ph.textContent="— 请选择管理员身份（超管需密码）—";ph.disabled=true;ph.selected=true;
     sel.appendChild(ph);
@@ -868,8 +882,8 @@ function importTeams(file){
     const hasName=head.some(h=>["姓名","名字","学生姓名","name"].includes(h));
     const hasTeamCol=head.some(h=>["联队编号","编号","联队名称","名称","应到","应到人数"].includes(h));
     if(hasName&&!hasTeamCol){
-      // 排表型（每 sheet=一个排/联队，如真实模板）→ 按 sheet 自动添加联队+导入其名单(花名册)
-      importRosterFile(file);
+      // 排表型（每 sheet=一个排/联队）→ 打开“目标联队选择向导”，逐 sheet 指定归属
+      openRosterPick(wb);
       return;
     }
     const rows=sh0.rows;
@@ -1058,22 +1072,26 @@ async function syncCfg(){
   try{
     const r=await cloudCall("/cfg","?v="+cfgV());
     if(!r||!r.ok||r.same)return;
-    if(r.admins){
-      const oldCur=curAdminName();
-      const tk=Object.keys(delTomb());
+    const goodT=Array.isArray(r.teams)&&r.teams.length;
+    const goodA=Array.isArray(r.admins)&&r.admins.length;
+    if(!goodT&&!goodA)return;                 // 云端配置为空/缺字段(旧版worker) → 忽略，防清空本地数据
+    const oldCur=curAdminName();
+    const tk=Object.keys(delTomb());
+    if(goodT){
       if(tk.length){
-        saveTeams((r.teams||[]).filter(x=>!delTomb()[x.id]));
+        saveTeams(r.teams.filter(x=>!delTomb()[x.id]));   // 墓碑过滤：被删联队即使云端回放也不复活
         const rl=r.rosters||{};tk.forEach(id=>{delete rl[id];});saveRoster(rl);
-      }else{saveTeams(r.teams||[]);saveRoster(r.rosters||{});}
-      saveAdmins(r.admins||[]);
-      localStorage.setItem(LS_CFGV,String(r.v));
-      if(!loadAdmins().some(a=>a.name===oldCur)){      // 当前身份被删 → 切回超管
-        const s=loadAdmins().find(x=>x.role==="super")||loadAdmins()[0];
-        if(s)localStorage.setItem(LS_ADMINCUR,s.name);
-      }
-      renderAdminSel();render();
-      if($("maskAdmin").classList.contains("show"))renderAdminPanel();
+      }else{saveTeams(r.teams);saveRoster(r.rosters||{});}
     }
+    if(goodA)saveAdmins(r.admins);            // admins 为空数组时不落地（防误清后触发全量重建）
+    localStorage.setItem(LS_CFGV,String(r.v));
+    if(!loadAdmins().some(a=>a.name===oldCur)){      // 当前身份被删 → 切回超管
+      const s=loadAdmins().find(x=>x.role==="super")||loadAdmins()[0];
+      if(s)localStorage.setItem(LS_ADMINCUR,s.name);
+    }
+    renderAdminSel();render();
+    if($("maskAdmin").classList.contains("show"))renderAdminPanel();
+    if(tk.length&&isSuper())pushCfg();        // 本机有删除墓碑 → 把“已删除”状态补推上云（排队机制自动执行）
   }finally{cfgBusy=false;}
 }
 let cfgPending=false;
@@ -1104,30 +1122,106 @@ async function rosterTpl(){
   });
   exportXlsx(wb,"花名册模板.xlsx");
 }
+/* 解析一个 sheet 的数据行（返回含全部档案字段的人员数组；无姓名列/无数据 → []） */
+function peopleOfRows(rows){
+  if(!rows||rows.length<2)return [];
+  const iName=pickHeader(rows,["姓名","名字","学生姓名","name"]);
+  if(iName<0)return null;
+  const iSid=pickHeader(rows,["学号","student","sid"]);
+  const iSex=pickHeader(rows,["性别","sex","gender"]);
+  const iMajor=pickHeader(rows,["专业","major","学院"]);
+  const iBldg=pickHeader(rows,["楼栋","宿舍楼","bldg"]);
+  const iRoom=pickHeader(rows,["房间","寝室号","宿舍号","room"]);
+  const iNote=pickHeader(rows,["备注","note","说明"]);
+  const out=[];
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r];if(!row.length)continue;
+    const nm=String(row[iName]??"").trim();if(!nm)continue;
+    const o={name:nm};
+    const put=(v,k)=>{const t=String(v??"").trim();if(t)o[k]=t;};
+    if(iSid>=0)put(row[iSid],"sid");if(iSex>=0)put(row[iSex],"sex");if(iMajor>=0)put(row[iMajor],"major");
+    if(iBldg>=0)put(row[iBldg],"bldg");if(iRoom>=0)put(row[iRoom],"room");if(iNote>=0)put(row[iNote],"note");
+    out.push(o);
+  }
+  return out;
+}
+/* 替换某联队名单为 arr（无 confirm，向导已确认）；返回旧人数 */
+function applyRosterReplace(teamId,arr,shName){
+  const old=rosterOf(teamId)||[];
+  const all=loadRoster();arr.forEach((p,i)=>{p.pid=i+1;});all[teamId]=arr;saveRoster(all);
+  render();if($("maskTeams").classList.contains("show")){tmSel=teamId;renderTmMembers();}
+  pushCfg();
+  return old.length;
+}
+let pickCtx=null;                                  // {file, items:[{shName,rows,n}]}
+function openRosterPick(wb){
+  const teams=loadTeams();
+  const items=(wb.sheets||[]).map(sh=>({shName:sh.name||"",rows:sh.rows||[],n:(peopleOfRows(sh.rows||[])||[]).length}));
+  const valid=items.filter(x=>x.n>0);
+  if(!valid.length){alert("没有解析到任何人员：请确认文件表头含「姓名」列（花名册排表格式：序号/学号/姓名/性别/专业/楼栋/房间/备注）。");return;}
+  pickCtx={wb,items:valid};
+  const box=$("pickRows");box.innerHTML="";
+  $("pickCount").textContent=wb.sheets.length;
+  valid.forEach((it,idx)=>{
+    const row=document.createElement("div");
+    row.style.cssText="display:flex;gap:8px;align-items:center;padding:5px 2px;font-size:13px;border-bottom:1px dashed var(--line)";
+    const info="<div style='flex:1;min-width:120px'><b>"+esc(it.shName||"（未命名）")+"</b><span style='color:var(--sub);font-size:12px'> · "+it.n+" 人</span></div>";
+    const sel=document.createElement("select");
+    sel.style.cssText="max-width:230px;padding:4px 6px";
+    let matched=null;
+    teams.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.id+" · "+t.name;sel.appendChild(o);if(it.shName&&(t.id===it.shName||t.name===it.shName||(t.name&&it.shName&&t.name.includes(it.shName))))matched=t.id;});
+    const on=document.createElement("option");on.value="__new__";on.textContent="＋ 自动新建（名="+(it.shName||"新联队")+"）";sel.appendChild(on);
+    sel.value=matched?matched:"__new__";
+    row.innerHTML=info;row.appendChild(sel);
+    box.appendChild(row);
+    it.sel=sel;
+  });
+  $("maskPick").classList.add("show");
+}
+$("pickCancel").onclick=()=>{$("maskPick").classList.remove("show");pickCtx=null;};
+$("pickOk").onclick=()=>{
+  if(!pickCtx)return;
+  const ctx=pickCtx;pickCtx=null;
+  const teams=loadTeams();
+  const plans=[];
+  ctx.items.forEach(it=>{
+    const target=it.sel?it.sel.value:"__new__";
+    const teamId=target==="__new__"?null:target;
+    plans.push({shName:it.shName,n:it.n,teamId,newName:(target==="__new__")?(it.shName||""):null});
+  });
+  const fdWarn=plans.filter(x=>x.teamId&&(rosterOf(x.teamId)||[]).some(p=>p.fd&&p.fd.length)).length;
+  const desc=plans.map(x=>"「"+(x.shName||"未命名")+"」"+x.n+"人 → "+(x.newName!=null?("＋新建『"+(x.newName||"新联队")+"』"):teamNameX(x.teamId))).join("\n");
+  if(!confirm("将导入 "+plans.length+" 个工作表：\n"+desc+(fdWarn?("\n\n其中 "+fdWarn+" 个已有联队存在已登记人脸，名单替换后需重新登记。请确认"):"")+"。\n继续？"))return;
+  $("maskPick").classList.remove("show");
+  let okN=0;
+  plans.forEach(pl=>{
+    const it=ctx.items.find(x=>x.shName===pl.shName);
+    const arr=peopleOfRows(it.rows);
+    if(!arr||!arr.length)return;
+    let teamId=pl.teamId;
+    if(pl.newName!=null){
+      const nm=pl.newName||("T"+Date.now());
+      teamId=nm;
+      unmarkDelTeam(nm);
+      const ts=loadTeams();
+      if(!ts.some(x=>x.id===nm||x.name===nm)){ts.push({id:nm,name:nm,expected:it.n});saveTeams(ts);}
+    }
+    applyRosterReplace(teamId,arr,pl.shName);
+    okN++;
+  });
+  if(plans.some(x=>x.newName!=null)){render();renderAdminSel();}
+  alert("✅ 花名册导入完成："+okN+"/"+plans.length+" 个表已导入"+(plans.some(x=>x.newName!=null)?"（含自动新建联队）":"")+"。\n请核对各联队名单，并重新登记人脸。");
+};
+$("maskPick").addEventListener("click",e=>{if(e.target===$("maskPick")){$("maskPick").classList.remove("show");pickCtx=null;}});
+
 function importRosterFile(file,onlyTeamId){
   readWorkbook(file).then(wb=>{
     if(onlyTeamId){
-      // 单联队导入：只取文件第 1 个工作表，全部替换“这一个”联队的名单（其他联队不动）
+      // 单联队导入：只取文件指定工作表（默认第 1 个），全部替换“这一个”联队的名单（其他联队不动）
       const sh=(wb.sheets||[])[0];const rows=sh?sh.rows:[];
       if(!rows||rows.length<2){alert("文件没有数据：需要表头 + 至少一行人员。");return;}
-      const oneI=pickHeader(rows,["姓名","名字","学生姓名","name"]);
-      if(oneI<0){alert("没识别到「姓名」列。请用「⬇ 本队模板」下载的单 sheet 模板（序号/学号/姓名/性别/专业/楼栋/房间/备注）填写后导入。");return;}
-      const oneSid=pickHeader(rows,["学号","student","sid"]);
-      const oneSex=pickHeader(rows,["性别","sex","gender"]);
-      const oneMj=pickHeader(rows,["专业","major","学院"]);
-      const oneBd=pickHeader(rows,["楼栋","宿舍楼","bldg"]);
-      const oneRm=pickHeader(rows,["房间","寝室号","宿舍号","room"]);
-      const oneNt=pickHeader(rows,["备注","note","说明"]);
-      const arr=[];
-      for(let r=1;r<rows.length;r++){
-        const row=rows[r];if(!row.length)continue;
-        const nm=String(row[oneI]??"").trim();if(!nm)continue;
-        const o={name:nm};
-        const put=(v,k)=>{const t=String(v??"").trim();if(t)o[k]=t;};
-        if(oneSid>=0)put(row[oneSid],"sid");if(oneSex>=0)put(row[oneSex],"sex");if(oneMj>=0)put(row[oneMj],"major");
-        if(oneBd>=0)put(row[oneBd],"bldg");if(oneRm>=0)put(row[oneRm],"room");if(oneNt>=0)put(row[oneNt],"note");
-        arr.push(o);
-      }
+      const arr=peopleOfRows(rows);
+      if(arr===null){alert("没识别到「姓名」列。请用「⬇ 本队模板」下载的单 sheet 模板（序号/学号/姓名/性别/专业/楼栋/房间/备注）填写后导入。");return;}
       if(!arr.length){alert("没有解析到人员行（跳过空行）。");return;}
       const team=loadTeams().find(x=>x.id===onlyTeamId);
       if(!team){alert("目标联队不存在，请重选。");return;}
@@ -1583,8 +1677,20 @@ $("addManual").onclick=addManualCreate;
 $("addFileBtn").onclick=()=>$("fileAdd").click();
 $("fileAdd").onchange=e=>{if(e.target.files[0])importTeams(e.target.files[0]);e.target.value="";};
 $("addTplList").onclick=exportTemplate;
-$("addTplRoster").onclick=()=>{rosterTpl();};
-$("btnReset").onclick=()=>{if(confirm("恢复全部示例数据？（名单+管理员，日报/签入保留）")){seedAll();if(!loadAdmins().find(x=>x.name===curAdminName()))localStorage.setItem(LS_ADMINCUR,"超级管理员");renderAdminSel();render();pushCfg();}};
+$("addTplRoster").onclick=()=>{rosterTplAsk();};
+/* 模板下载：选择下载单个联队（单 sheet）或全部联队（多 sheet） */
+async function rosterTplAsk(){
+  const teams=loadTeams();
+  if(!teams.length){alert("请先建立联队（可用「名单模板」导入联队结构）。");return;}
+  const v=prompt("下载花名册模板：输入联队编号/名称（如 L06 / 六排）→ 下载该联队【单 sheet】模板；\n直接点确定（留空）→ 下载全部联队【多 sheet】模板。\n\n现有联队：\n"+teams.map(t=>t.id+" · "+t.name).join("\n"));
+  if(v===null)return;
+  const key=v.trim();
+  if(!key){rosterTpl();return;}
+  const t=teams.find(x=>x.id===key||x.name===key||(x.name&&key&&x.name.includes(key)));
+  if(!t){alert("没找到联队「"+key+"」。请按上面的编号/名称输入，或留空下载全部。");return;}
+  await rosterTplOne(t.id);
+}
+$("btnReset").onclick=()=>{if(confirm("恢复全部示例数据？（名单+管理员，日报/签入保留）")){localStorage.removeItem(LS_DEL);seedAll();if(!loadAdmins().find(x=>x.name===curAdminName()))localStorage.setItem(LS_ADMINCUR,"超级管理员");renderAdminSel();render();pushCfg();}};
 
 $("btnClearDay").onclick=async()=>{
   if(!isSuper())return;
