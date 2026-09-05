@@ -450,7 +450,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.8（名单不再被云端旧配置抹掉） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.9（表头自动识别+失败诊断） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -878,8 +878,9 @@ function pickHeader(rows,keys){
 function importTeams(file){
   readWorkbook(file).then(wb=>{
     const sh0=wb.sheets[0]||{rows:[]};
-    const head=(sh0.rows[0]||[]).map(h=>String(h||"").trim());
-    const hasName=head.some(h=>["姓名","名字","学生姓名","name"].includes(h));
+    const hi0=sheetHeaderRow(sh0.rows||[]);
+    const head=(sh0.rows[Math.max(0,hi0)]||[]).map(h=>String(h||"").trim());
+    const hasName=hi0>=0&&head.some(h=>["姓名","名字","学生姓名","name"].includes(h));
     const hasTeamCol=head.some(h=>["联队编号","编号","联队名称","名称","应到","应到人数"].includes(h));
     if(hasName&&!hasTeamCol){
       // 排表型（每 sheet=一个排/联队）→ 打开“目标联队选择向导”，逐 sheet 指定归属
@@ -1124,19 +1125,33 @@ async function rosterTpl(){
   });
   exportXlsx(wb,"花名册模板.xlsx");
 }
-/* 解析一个 sheet 的数据行（返回含全部档案字段的人员数组；无姓名列/无数据 → []） */
+/* 找表头所在行：兼容真实表格表头前有标题行/说明行/空行（前 5 行内找含“姓名/学号/名字”的行） */
+function sheetHeaderRow(rows){
+  const maxLook=Math.min(5,rows.length-1);
+  for(let i=0;i<=maxLook;i++){
+    const hd=(rows[i]||[]).map(h=>String(h).trim().toLowerCase());
+    if(hd.some(h=>["姓名","名字","学生姓名","学号"].some(k=>h.includes(k))))return i;
+  }
+  return -1;
+}
+function hdrPick(rows,hi,keys){
+  return pickHeader([rows[hi]||[]],keys);
+}
+/* 解析一个 sheet 的数据行（返回含全部档案字段的人员数组；无姓名列→null；无数据→[]） */
 function peopleOfRows(rows){
   if(!rows||rows.length<2)return [];
-  const iName=pickHeader(rows,["姓名","名字","学生姓名","name"]);
+  const hi=sheetHeaderRow(rows);
+  if(hi<0)return null;
+  const iName=hdrPick(rows,hi,["姓名","名字","学生姓名","name"]);
   if(iName<0)return null;
-  const iSid=pickHeader(rows,["学号","student","sid"]);
-  const iSex=pickHeader(rows,["性别","sex","gender"]);
-  const iMajor=pickHeader(rows,["专业","major","学院"]);
-  const iBldg=pickHeader(rows,["楼栋","宿舍楼","bldg"]);
-  const iRoom=pickHeader(rows,["房间","寝室号","宿舍号","room"]);
-  const iNote=pickHeader(rows,["备注","note","说明"]);
+  const iSid=hdrPick(rows,hi,["学号","student","sid"]);
+  const iSex=hdrPick(rows,hi,["性别","sex","gender"]);
+  const iMajor=hdrPick(rows,hi,["专业","major","学院"]);
+  const iBldg=hdrPick(rows,hi,["楼栋","宿舍楼","bldg"]);
+  const iRoom=hdrPick(rows,hi,["房间","寝室号","宿舍号","room"]);
+  const iNote=hdrPick(rows,hi,["备注","note","说明"]);
   const out=[];
-  for(let r=1;r<rows.length;r++){
+  for(let r=hi+1;r<rows.length;r++){
     const row=rows[r];if(!row.length)continue;
     const nm=String(row[iName]??"").trim();if(!nm)continue;
     const o={name:nm};
@@ -1160,7 +1175,14 @@ function openRosterPick(wb){
   const teams=loadTeams();
   const items=(wb.sheets||[]).map(sh=>({shName:sh.name||"",rows:sh.rows||[],n:(peopleOfRows(sh.rows||[])||[]).length}));
   const valid=items.filter(x=>x.n>0);
-  if(!valid.length){alert("没有解析到任何人员：请确认文件表头含「姓名」列（花名册排表格式：序号/学号/姓名/性别/专业/楼栋/房间/备注）。");return;}
+  if(!valid.length){
+    const prev=(wb.sheets||[]).slice(0,3).map(sh=>{
+      const rr=(sh.rows||[]).slice(0,5).map(rw=>String((rw||[]).join(" | ")).slice(0,90)).join("\n");
+      return "「"+(sh.name||"未命名")+"」:\n"+rr;
+    }).join("\n\n");
+    alert("没有解析到任何人员：请确认文件表头含「姓名」列（格式：序号/学号/姓名/性别/专业/楼栋/房间/备注）。\n\n文件前几行内容（供核对）：\n"+prev);
+    return;
+  }
   pickCtx={wb,items:valid};
   const box=$("pickRows");box.innerHTML="";
   $("pickCount").textContent=wb.sheets.length;
