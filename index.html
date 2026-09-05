@@ -450,7 +450,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.10（名单模板=花名册样式） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.11（名单防空覆盖） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -1104,11 +1104,19 @@ async function syncCfg(){
     if(!goodT&&!goodA)return;                 // 云端配置为空/缺字段(旧版worker) → 忽略，防清空本地数据
     const oldCur=curAdminName();
     const tk=Object.keys(delTomb());
+    const clHasR=anyRosterHasPeople();
+    const cldEmptyR=!Object.values(r.rosters||{}).some(a=>a&&a.length);   // 云端名单全空?
+    let needRepush=tk.length>0;
     if(goodT){
       if(tk.length){
         saveTeams(r.teams.filter(x=>!delTomb()[x.id]));   // 墓碑过滤：被删联队即使云端回放也不复活
         const rl=r.rosters||{};tk.forEach(id=>{delete rl[id];});saveRoster(rl);
-      }else{saveTeams(r.teams);saveRoster(r.rosters||{});}
+      }else if(cldEmptyR&&clHasR){
+        saveTeams(r.teams);                   // 云端名单空但本地有名单 → 不落地 rosters，防空名单传播
+        needRepush=true;                      // 并用本地名单修正云端
+      }else{
+        saveTeams(r.teams);saveRoster(r.rosters||{});
+      }
     }
     if(goodA)saveAdmins(r.admins);            // admins 为空数组时不落地（防误清后触发全量重建）
     localStorage.setItem(LS_CFGV,String(r.v));
@@ -1118,15 +1126,18 @@ async function syncCfg(){
     }
     renderAdminSel();render();
     if($("maskAdmin").classList.contains("show"))renderAdminPanel();
-    if(tk.length&&isSuper())pushCfg();        // 本机有删除墓碑 → 把“已删除”状态补推上云（排队机制自动执行）
-  }finally{cfgBusy=false;}
+    if(needRepush&&isSuper())pushCfg();       // 墓碑/云端名单被清空 → 用本地状态补推上云（排队机制自动执行）
+  }finally{cfgBusy=false;if(cfgPending)pushCfg();}
 }
+function anyRosterHasPeople(){try{const rl=JSON.parse(localStorage.getItem(LS_ROSTER)||"{}");return Object.values(rl).some(a=>Array.isArray(a)&&a.length);}catch(e){return false;}}
 let cfgPending=false;
 function pushCfg(){                                   // 超管配置改动后调用（busy 时排队补推，不静默丢）
   if(!isSuper())return;
   if(cfgBusy){cfgPending=true;return;}
   cfgBusy=true;cfgPending=false;
-  cloudCall("/cfg","",{method:"POST",body:{teams:loadTeams(),rosters:loadRoster(),admins:loadAdmins()}}).then(r=>{
+  const body={teams:loadTeams(),admins:loadAdmins()};
+  if(anyRosterHasPeople())body.rosters=loadRoster();   // 本机花名册全空 → 不携带 rosters（防止把云端名单清空）
+  cloudCall("/cfg","",{method:"POST",body}).then(r=>{
     if(r&&r.ok)localStorage.setItem(LS_CFGV,String(r.v));
   }).catch(()=>{}).finally(()=>{cfgBusy=false;if(cfgPending)pushCfg();});
 }
