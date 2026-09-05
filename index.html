@@ -434,7 +434,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.2（人脸唯一绑定） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.3（名单管人脸） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -1955,7 +1955,12 @@ $("regClose").onclick=()=>$("maskReg").classList.remove("show");
 $("maskReg").addEventListener("click",e=>{if(e.target===$("maskReg"))$("maskReg").classList.remove("show");});
 $("regTeam").onchange=e=>{regTeamId=e.target.value;renderRegPersons();};
 $("regShoot").onclick=regFileChooseForCurrent;
-$("regFile").onchange=e=>{if(e.target.files[0])regImageFor(e.target.files[0],$("regPerson").value);e.target.value="";};
+$("regFile").onchange=e=>{
+  const f=e.target.files[0];if(!f){return;}
+  e.target.value="";
+  if(faceRegCtx){const c=faceRegCtx;faceRegCtx=null;doRegOne(f,c.team,c.pid);}
+  else regImageFor(f,$("regPerson").value);
+};
 $("regDir").onclick=()=>$("regDirInput").click();
 $("regDirInput").onchange=e=>{if(e.target.files.length)regBatchFiles(e.target.files);e.target.value="";};
 $("btnReco").onclick=openReco;
@@ -2008,8 +2013,12 @@ function renderTmMembers(){
   roster.forEach(p=>{
     const row=document.createElement("div");
     row.style.cssText="display:flex;gap:6px;align-items:center;padding:3px 2px;font-size:13px";
-    row.innerHTML="<b>"+esc(p.name)+"</b>"+(p.sid?"<span style='color:var(--sub);font-size:12px'>"+esc(p.sid)+"</span>":"")+
-      "<span class='spacer'></span><button class='tbtn small' data-pid='"+p.pid+"' data-act='mv' title='划归到其他联队'>⇄ 移</button>"+
+    const hasFd=p.fd&&p.fd.length;
+    row.innerHTML="<div style='flex:1;min-width:150px'><div><b>"+esc(p.name)+"</b>"+(p.sid?"<span style='color:var(--sub);font-size:12px'> "+esc(p.sid)+"</span>":"")+
+      (hasFd?"<span class='chip done' style='margin-left:6px;padding:0 8px'>📷 已登记</span>":"<span class='chip wait' style='margin-left:6px;padding:0 8px'>未登记人脸</span>")+"</div>"+
+      "<div style='font-size:12px;margin-top:2px'>人脸：<button class='tbtn small' style='padding:1px 8px' data-pid='"+p.pid+"' data-fact='"+(hasFd?"repl":"reg")+"'>"+(hasFd?"📷 换照":"📷 登记")+"</button>"+
+      (hasFd?" <button class='tbtn small danger' style='padding:1px 8px' data-pid='"+p.pid+"' data-fact='delfd'>🗑 删脸</button>":"")+"</div></div>"+
+      "<button class='tbtn small' data-pid='"+p.pid+"' data-act='mv' title='划归到其他联队'>⇄ 移</button>"+
       "<button class='tbtn small' data-pid='"+p.pid+"' data-act='ren'>改名</button>"+
       "<button class='tbtn small danger' data-pid='"+p.pid+"' data-act='del'>删</button>";
     box.appendChild(row);
@@ -2017,6 +2026,38 @@ function renderTmMembers(){
 }
 function tmSave(){
   tmNormalizeRoster(tmSel);renderTmMembers();render();pushCfg();
+}
+/* ---- 名单管理内人脸操作 ---- */
+let faceRegCtx=null;
+async function doRegOne(file,teamId,pid){
+  const url=URL.createObjectURL(file);
+  try{
+    await ensureReco();
+    const img=new Image();
+    await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error("图片读取失败"));img.src=url;});
+    $("regStatus").textContent="提取特征中…";
+    const d=await descOfImg(img);
+    if(!d){alert("⚠ 未在照片里检测到清晰人脸，换一张正面照");return;}
+    const warn=regDupWarn(teamId,pid,d);
+    if(warn&&warn.block){alert(warn.msg);return;}
+    if(warn&&warn.self&&!confirm(warn.self)){return;}
+    saveFdTo(teamId,pid,d);
+    $("regStatus").textContent="✅ 已登记/更新";
+    if($("maskTeams").classList.contains("show")){tmSel=teamId;renderTmTeams();renderTmMembers();}
+    if($("maskReg").classList.contains("show"))renderRegPersons();
+    alert("✅ 人脸已登记/更新（唯一绑定校验通过）。");
+  }catch(e){alert("登记失败："+e.message);}
+  finally{URL.revokeObjectURL(url);}
+}
+function pickFaceFor(teamId,pid){faceRegCtx={team:teamId,pid:pid};$("regFile").click();}
+function delMemberFd(teamId,pid){
+  const all=loadRoster();const arr=all[teamId]||[];
+  const p=arr.find(x=>x.pid===Number(pid));if(!p)return;
+  if(!p.fd){alert("该成员还没有登记人脸");return;}
+  if(!confirm("删除「"+p.name+"」的登记人脸？删除后识别点名将无法识别他（名单/点名数据不受影响）。"))return;
+  delete p.fd;saveRoster(all);
+  renderTmMembers();pushCfg();
+  alert("✅ 已删除「"+p.name+"」的登记人脸。");
 }
 function tmMemberAct(pid,act){
   const teamId=tmSel;if(!teamId)return;
@@ -2107,6 +2148,13 @@ function tmMoveConfirm(){
 $("tmMembers").addEventListener("click",e=>{
   const b=e.target.closest("button[data-act]");
   if(b)tmMemberAct(Number(b.dataset.pid),b.dataset.act);
+  const fb=e.target.closest("button[data-fact]");
+  if(fb){
+    const pid=Number(fb.dataset.pid),f=fb.dataset.fact,team=tmSel;
+    if(!team)return;
+    if(f==="delfd")delMemberFd(team,pid);
+    else pickFaceFor(team,pid);
+  }
 });
 $("tmMembers").addEventListener("click",e=>{
   const b=e.target.closest("#tmDelTeam, #tmRename");
