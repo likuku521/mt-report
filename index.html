@@ -450,7 +450,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.11（名单防空覆盖） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.12（名单防空覆盖+云端自愈） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -1101,7 +1101,11 @@ async function syncCfg(){
     if(rv<=lv)return;        // 版本护栏：云端不比本地新 → 忽略本次拉取（防止陈旧云端配置覆盖本地刚导入的名单/刚做的修改）
     const goodT=Array.isArray(r.teams)&&r.teams.length;
     const goodA=Array.isArray(r.admins)&&r.admins.length;
-    if(!goodT&&!goodA)return;                 // 云端配置为空/缺字段(旧版worker) → 忽略，防清空本地数据
+    if(!goodT&&!goodA){
+      // 云端配置整体为空/坏(旧版worker或曾被空推) → 不覆盖本地；本地有数据则自动补推修复云端
+      if(isSuper()&&loadTeams().length)pushCfg();
+      return;
+    }
     const oldCur=curAdminName();
     const tk=Object.keys(delTomb());
     const clHasR=anyRosterHasPeople();
