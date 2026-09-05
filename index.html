@@ -450,7 +450,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.7（复活链封堵+导入向导） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.8（名单不再被云端旧配置抹掉） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -1072,6 +1072,8 @@ async function syncCfg(){
   try{
     const r=await cloudCall("/cfg","?v="+cfgV());
     if(!r||!r.ok||r.same)return;
+    const lv=parseInt(cfgV(),10)||0,rv=parseInt(String(r.v??""),10)||0;
+    if(rv<=lv)return;        // 版本护栏：云端不比本地新 → 忽略本次拉取（防止陈旧云端配置覆盖本地刚导入的名单/刚做的修改）
     const goodT=Array.isArray(r.teams)&&r.teams.length;
     const goodA=Array.isArray(r.admins)&&r.admins.length;
     if(!goodT&&!goodA)return;                 // 云端配置为空/缺字段(旧版worker) → 忽略，防清空本地数据
