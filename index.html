@@ -434,7 +434,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.1（重复登记提醒） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.2（人脸唯一绑定） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -1773,21 +1773,27 @@ function openReg(){
   $("regStatus").textContent="";$("maskReg").classList.add("show");
   fillRegTeams();
 }
-/* 重复录入提醒：①自身已登记→覆盖提示 ②该脸疑似已登记给他人→张冠李戴拦截提示 */
+/* 人脸唯一绑定：每张人脸只登记一个姓名。
+   与他人（非本人）人脸重合(距离<0.5) → 硬阻断；本人已登记 → 提示后可覆盖(多角度增强) */
 function regDupWarn(teamId,pid,desc){
-  const parts=[];
   const curP=rosterOf(teamId).find(x=>x.pid===Number(pid));
-  if(curP&&curP.fd&&curP.fd.length)parts.push("「"+curP.name+"」已登记过人脸，再登记将【覆盖】原特征（建议同一人多张不同角度登记以提升识别）。");
   const refs=[];
   loadTeams().forEach(t=>rosterOf(t.id).forEach(p=>{
     if(p.fd&&p.fd.length&&!(t.id===teamId&&p.pid===Number(pid)))refs.push(new faceapi.LabeledFaceDescriptors(t.id+"·"+p.name,[Float32Array.from(p.fd)]));
   }));
+  let hit=null;
   if(refs.length){
     const m=new faceapi.FaceMatcher(refs,0.99);
     const b=m.findBestMatch(desc);
-    if(b.label!=="unknown"&&b.distance<0.35)parts.push("该照片与「"+b.label+"」的登记照高度相似（距离 "+b.distance.toFixed(3)+"，疑似同一人/同一张照片）。请确认不是把别人的照片登记给了"+(curP?"「"+curP.name+"」":"此人")+"！");
+    if(b.label!=="unknown"&&b.distance<0.5)hit={who:b.label,dist:b.distance};
   }
-  return parts.length?parts.join("\n")+"\n\n仍要执行这次登记？":null;
+  if(hit){
+    return {block:true,msg:"❌ 该人脸已登记给「"+hit.who+"」（距离 "+hit.dist.toFixed(3)+"，判定为同一张人脸）。\n每张人脸只允许绑定一个姓名。\n如需给此人换登记照，请在原记录上直接重录；若此人归属错误请先在「名单管理」划归/删除后再登记。"};
+  }
+  if(curP&&curP.fd&&curP.fd.length){
+    return {self:"「"+curP.name+"」已登记过人脸，再登记将【覆盖】原特征（建议多张不同角度增强识别）。仍要执行？"};
+  }
+  return null;
 }
 function regImageFor(file,pid){
   const url=URL.createObjectURL(file);const img=new Image();
@@ -1798,7 +1804,8 @@ function regImageFor(file,pid){
       const d=await descOfImg(img);
       if(!d){$("regStatus").textContent="⚠ 未在照片里检测到清晰人脸，换一张正面照";return;}
       const warn=regDupWarn(regTeamId,pid,d);
-      if(warn&&!confirm(warn)){$("regStatus").textContent="已取消（重复登记提醒）。";URL.revokeObjectURL(url);return;}
+      if(warn&&warn.block){alert(warn.msg);$("regStatus").textContent="❌ 已阻止：该人脸已登记给其他姓名（一人一照唯一绑定）。";URL.revokeObjectURL(url);return;}
+      if(warn&&warn.self&&!confirm(warn.self)){$("regStatus").textContent="已取消（覆盖提醒）。";URL.revokeObjectURL(url);return;}
       saveFdTo(regTeamId,pid,d);
       $("regStatus").textContent="✅ 已登记。建议同一人多角度/多张可再次覆盖以提升识别率。";
       renderRegPersons();pushCfg();
@@ -1827,11 +1834,11 @@ function regBatchFiles(files){
         const d=await descOfImg(img);URL.revokeObjectURL(url);
         if(!d){bad.push(base);continue;}
         const refs2=[];
-        roster.filter(q=>q!==p&&q.fd&&q.fd.length).forEach(q=>refs2.push(new faceapi.LabeledFaceDescriptors(q.name,[Float32Array.from(q.fd)])));
+        loadTeams().forEach(t=>rosterOf(t.id).forEach(q=>{if(q!==p&&q.fd&&q.fd.length)refs2.push(new faceapi.LabeledFaceDescriptors(t.id+"·"+q.name,[Float32Array.from(q.fd)]));}));
         if(refs2.length){
           const m2=new faceapi.FaceMatcher(refs2,0.99);
           const b2=m2.findBestMatch(d);
-          if(b2.label!=="unknown"&&b2.distance<0.35){miss.push(base+"(与他人相似:"+b2.label+")");continue;}
+          if(b2.label!=="unknown"&&b2.distance<0.5){miss.push(base+"(人脸已登记:"+b2.label+")");continue;}
         }
         const was=p.fd?1:0;
         p.fd=Array.from(d);done++;overw+=was;
