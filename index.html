@@ -375,7 +375,7 @@
     <h3>＋ 新增联队 / 导入名单 <span class="badge super">超管专属</span></h3>
     <div style="font-size:12.5px;color:var(--sub);margin-bottom:10px">两种方式：
       <b>手动</b>建一个空联队（稍后用「名单管理」加成员或直接导入）；
-      <b>导入文件</b>（xlsx/csv）：花名册排表 → 弹窗里<b>逐个 sheet 选择目标联队</b>（进已有联队或自动新建）；含"联队编号"列的名单表 → 新增/更新联队结构。</div>
+      <b>导入文件</b>（xlsx/csv）：花名册排表 → 弹窗里<b>逐个 sheet 选择目标联队</b>（进已有联队或自动新建）；示例行自动跳过。</div>
     <div style="border:1px dashed var(--line);border-radius:10px;padding:10px;margin-bottom:12px">
       <div style="font-size:13px;font-weight:700;margin-bottom:6px">① 手动建空联队</div>
       <div class="mrow">
@@ -388,8 +388,8 @@
       <div style="font-size:13px;font-weight:700;margin-bottom:6px">② 导入文件自动建队</div>
       <button class="btn" id="addFileBtn">📥 选择 排表/名单 文件</button>
       <div style="margin-top:8px;font-size:12.5px;color:var(--sub)">参考模板：
-        <a style="cursor:pointer;color:var(--green-d);text-decoration:underline" id="addTplList">名单模板（联队编号,名称,应到）</a>
-        ｜<a style="cursor:pointer;color:var(--green-d);text-decoration:underline" id="addTplRoster">花名册模板（一次导出全部联队，多 sheet）</a>
+        <a style="cursor:pointer;color:var(--green-d);text-decoration:underline" id="addTplList">名单模板（花名册样式：每联队一个 sheet，含示例行）</a>
+        ｜<a style="cursor:pointer;color:var(--green-d);text-decoration:underline" id="addTplRoster">花名册模板（按现有联队下载，单 sheet/多 sheet）</a>
         <div style="margin-top:6px;color:var(--sub)">💡 日常<b>单个联队</b>的花名册（加人/换名单）：打开顶部「😊 联队名单管理」→ 选中联队 → 用「⬇ 本队模板 / 📥 导入本队名单」——单 sheet，一次只动这一个联队。</div></div>
     </div>
     <div class="modal-btns"><button class="btn plain" id="addClose">关闭</button></div>
@@ -450,7 +450,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.9（表头自动识别+失败诊断） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.10（名单模板=花名册样式） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -977,9 +977,33 @@ function exportTrans(){
   });
   download("军训联队签入明细_"+curDate+"_"+(curAdminName()||"全部")+".csv",lines.join("\r\n"));
 }
-function exportTemplate(){
-  download("军训联队名单模板.csv",["联队编号,联队名称,应到人数","L01,第1联队,52","L02,第2联队,50","L03,第3联队,55"].join("\r\n"));
+/* 「名单模板」下载：花名册样式 xlsx —— 每 sheet=一个联队(sheet名=联队名)，列同真实排表；
+   每个表带 3 行「示例：」开头的数据行，仅演示格式，导入时会自动跳过，可整行删除或改成真实学生 */
+async function teamRosterTpl(){
+  const ok=await ensureXLSX();
+  if(!ok){alert("Excel 组件加载失败，请检查网络");return;}
+  let teams=loadTeams();
+  const demoMode=!teams.length;
+  if(demoMode)teams=[{id:"L01",name:"示例联队一"},{id:"L02",name:"示例联队二"}];
+  const wb=XLSX.utils.book_new();
+  const guide=[["军训联队花名册（名单模板）"],
+    [""],
+    ["用法：本文件每个 sheet=一个联队，sheet 名就是联队名（可改成你校真实联队名，如 第1联队 / 五排）。"],
+    ["每个表填该联队学生：一人一行，姓名必填，学号/性别/专业/楼栋/房间/备注按列填写；想留到后面再填的列可空。"],
+    ["填好后：顶部「＋ 新增联队/导入名单」→「📥 选择 排表/名单 文件」上传本文件 → 弹窗里核对每个表进哪个联队 → 开始导入。"],
+    ["以「示例：」开头的行只是格式示范，导入时自动跳过，可整行删除或直接改成真实学生。"]];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(guide),"导入说明");
+  teams.forEach(t=>{
+    const aoa=[["序号","学号","姓名","性别","专业","楼栋","房间","备注"]];
+    aoa.push([1,"202600000001","示例：张明","男","会计学本科","南1","101","排长"]);
+    aoa.push([2,"202600000002","示例：李华","女","财务管理本科","西1","201",""]);
+    aoa.push([3,"202600000003","示例：王芳","女","审计学本科","西2","301",""]);
+    const sn=String(t.name||t.id).replace(/[\/:*?"<>|[\[\]]/g,"_").slice(0,31);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),sn);
+  });
+  exportXlsx(wb,demoMode?"军训名单模板（示例）.xlsx":"军训名单模板.xlsx");
 }
+function exportTemplate(){teamRosterTpl();}
 
 /* ---------- 云端同步（Cloudflare Worker+KV） ---------- */
 let cloudBusy=false,cloudOk=false,cloudLast="",cloudErr="";
@@ -1153,7 +1177,9 @@ function peopleOfRows(rows){
   const out=[];
   for(let r=hi+1;r<rows.length;r++){
     const row=rows[r];if(!row.length)continue;
-    const nm=String(row[iName]??"").trim();if(!nm)continue;
+    const nm=String(row[iName]??"").trim();
+    if(!nm)continue;
+    if(nm.indexOf("示例")===0)continue;          // 「示例：」开头的示范行导入时自动跳过
     const o={name:nm};
     const put=(v,k)=>{const t=String(v??"").trim();if(t)o[k]=t;};
     if(iSid>=0)put(row[iSid],"sid");if(iSex>=0)put(row[iSex],"sex");if(iMajor>=0)put(row[iMajor],"major");
