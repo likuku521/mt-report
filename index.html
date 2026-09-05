@@ -337,9 +337,14 @@
       <button class="tbtn" id="regShoot">📷 拍摄/选图</button>
       <input type="file" id="regFile" accept="image/*" hidden>
     </div>
-    <div class="frm" style="margin-top:8px"><label>批量文件夹（文件名=姓名或学号）</label>
-      <button class="tbtn" id="regDir">📁 批量导入照片</button>
-      <input type="file" id="regDirInput" webkitdirectory multiple hidden>
+    <div class="frm" style="margin-top:8px"><label>批量照片（文件名=姓名或学号，jpg/png 均可）</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px">
+        <button class="tbtn" id="regDir" title="选择照片文件夹（若弹出的选择器看不到文件，请改用下面两种方式）">📁 选文件夹</button>
+        <button class="tbtn" id="regMulti" title="在文件选择框里可 Ctrl/Shift 多选照片">🖼 选照片（可多选）</button>
+        <input type="file" id="regDirInput" webkitdirectory multiple hidden>
+        <input type="file" id="regFilesMulti" multiple accept=".jpg,.jpeg,.png,.webp" hidden>
+      </div>
+      <div id="regDrop" style="border:1.5px dashed var(--line);border-radius:8px;padding:10px 8px;margin-top:6px;font-size:12.5px;color:var(--sub);text-align:center;cursor:pointer;transition:all .15s">⬇ 最稳方式：把<b>照片文件夹</b>或<b>多张照片</b>直接<b style="color:var(--green-d)">拖到此处</b>松开即批量导入（不弹文件夹选择框）</div>
     </div>
     <div id="regStatus" style="font-size:13px;color:var(--green-d);font-weight:600;margin:6px 0"></div>
     <div id="regList" style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px"></div>
@@ -450,7 +455,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.13（批量照片导入修复） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.14（批量导入修复+三种方式） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -2222,7 +2227,26 @@ $("regFile").onchange=e=>{
   else regImageFor(f,$("regPerson").value);
 };
 $("regDir").onclick=()=>$("regDirInput").click();
-$("regDirInput").onchange=e=>{regBatchFiles(e.target.files);e.target.value="";};
+$("regDirInput").onchange=e=>{const fl=Array.from(e.target.files||[]);e.target.value="";regBatchFiles(fl);};   // 先拷贝成数组：FileList 是活集合，清 value 会把已传引用清空
+$("regFilesMulti").onchange=e=>{const fl=Array.from(e.target.files||[]);e.target.value="";regBatchFiles(fl);};
+const regDrop=$("regDrop");
+["dragenter","dragover"].forEach(ev=>regDrop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();regDrop.style.borderColor="var(--green-d)";regDrop.style.background="rgba(245,201,107,.08)";}));
+["dragleave","drop"].forEach(ev=>regDrop.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();regDrop.style.borderColor="";regDrop.style.background="";}));
+regDrop.addEventListener("drop",async e=>{
+  const files=[];
+  const items=[...(e.dataTransfer?e.dataTransfer.items:[])].filter(it=>it&&it.webkitGetAsEntry);
+  async function walk(en){
+    if(en.isFile){try{const f=await new Promise((res,rej)=>en.file(res,rej));if(f)files.push(f);}catch(err){}}
+    else if(en.isDirectory){
+      const rd=en.createReader();let batch=[];
+      do{batch=await new Promise(res=>rd.readEntries(res));for(const x of batch)await walk(x);}while(batch.length);
+    }
+  }
+  for(const it of items)await walk(it.webkitGetAsEntry());
+  if(files.length)regBatchFiles(files);
+  else alert("没有读到文件：请拖入照片文件夹或照片文件，或用上方「选文件夹/选照片」按钮。");
+});
+regDrop.addEventListener("click",()=>{$("regFilesMulti").click();});
 $("btnReco").onclick=openReco;
 $("recoClose").onclick=()=>{stopRecoAll();$("maskReco").classList.remove("show");recoTeam=null;};
 $("maskReco").addEventListener("click",e=>{if(e.target===$("maskReco")){stopRecoAll();$("maskReco").classList.remove("show");recoTeam=null;}});
