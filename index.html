@@ -339,7 +339,7 @@
     </div>
     <div class="frm" style="margin-top:8px"><label>批量文件夹（文件名=姓名或学号）</label>
       <button class="tbtn" id="regDir">📁 批量导入照片</button>
-      <input type="file" id="regDirInput" webkitdirectory multiple accept="image/*" hidden>
+      <input type="file" id="regDirInput" webkitdirectory multiple hidden>
     </div>
     <div id="regStatus" style="font-size:13px;color:var(--green-d);font-weight:600;margin:6px 0"></div>
     <div id="regList" style="max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px"></div>
@@ -450,7 +450,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.12（名单防空覆盖+云端自愈） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.13（批量照片导入修复） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -2067,11 +2067,26 @@ function regBatchFiles(files){
     const byName=new Map(roster.map(p=>[p.name,p]));
     const bySid=new Map(roster.filter(p=>p.sid).map(p=>[p.sid,p]));
     let done=0,miss=[],bad=[],overw=0;
+    if(!files||!files.length){$("regStatus").textContent="⚠ 没有读取到图片文件：请确认选中的文件夹里含 .jpg/.png/.webp 图片（浏览器需允许文件夹读取）。";return;}
+    const imgs=[];
+    for(let i=0;i<files.length;i++){
+      const nm=String(files[i].name||"");
+      if(!/\.(jpe?g|png|webp)$/i.test(nm))continue;      // 只处理图片，跳过 Thumbs.db 等杂项
+      imgs.push(files[i]);
+    }
+    if(!imgs.length){$("regStatus").textContent="⚠ 文件夹里没有 .jpg/.png/.webp 图片文件。";return;}
+    files=imgs;
     $("regStatus").textContent="批量处理 0/"+files.length+" …";
     for(let i=0;i<files.length;i++){
       const f=files[i];
-      const base=String(f.name||"").replace(/\.[^.]+$/,"").trim();
+      let base=String(f.name||"").replace(/\.[^.]+$/,"").trim();
       let p=byName.get(base)||bySid.get(base);
+      if(!p){                                                    // 宽松匹配：文件名含学号或姓名即算中
+        const sidHit=(base.match(/\d{6,}/)||[])[0];
+        if(sidHit)p=bySid.get(sidHit);
+      }
+      if(!p){for(const nm of byName.keys()){if(nm&&base.includes(nm)){p=byName.get(nm);break;}}}
+      if(!p){for(const sid of bySid.keys()){if(sid&&base.includes(sid)){p=bySid.get(sid);break;}}}
       if(!p){miss.push(base);continue;}
       try{
         const url=URL.createObjectURL(f);const img=new Image();
@@ -2207,7 +2222,7 @@ $("regFile").onchange=e=>{
   else regImageFor(f,$("regPerson").value);
 };
 $("regDir").onclick=()=>$("regDirInput").click();
-$("regDirInput").onchange=e=>{if(e.target.files.length)regBatchFiles(e.target.files);e.target.value="";};
+$("regDirInput").onchange=e=>{regBatchFiles(e.target.files);e.target.value="";};
 $("btnReco").onclick=openReco;
 $("recoClose").onclick=()=>{stopRecoAll();$("maskReco").classList.remove("show");recoTeam=null;};
 $("maskReco").addEventListener("click",e=>{if(e.target===$("maskReco")){stopRecoAll();$("maskReco").classList.remove("show");recoTeam=null;}});
