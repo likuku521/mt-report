@@ -434,7 +434,7 @@
 </div>
 
 <footer>
-  军训联队数据回传 · v0.12.4（批量导入修复） · <a id="btnReset">恢复示例数据</a>
+  军训联队数据回传 · v0.12.5（花名册模板全字段） · <a id="btnReset">恢复示例数据</a>
 </footer>
 
 <script>
@@ -1067,8 +1067,8 @@ async function rosterTpl(){
   if(!teams.length){alert("请先导入联队名单，模板将按联队生成 sheet");return;}
   const wb=XLSX.utils.book_new();
   teams.forEach(t=>{
-    const aoa=[["学号","姓名","性别","专业","楼栋","房间","备注"]];
-    for(let i=1;i<=Math.min(t.expected||0,8);i++)aoa.push(["",t.name+"示例学员"+i,"","","","",""]);
+    const aoa=[["序号","学号","姓名","性别","专业","楼栋","房间","备注"]];
+    for(let i=1;i<=Math.min(t.expected||0,8);i++)aoa.push([i,"",t.name+"示例学员"+i,"","","","",""]);
     const ws=XLSX.utils.aoa_to_sheet(aoa);
     const sn = String(t.name || t.id).replace(/[\/:*?"<>|[\[\]]/g, "_").slice(0, 31);
     XLSX.utils.book_append_sheet(wb,ws,sn);
@@ -1087,14 +1087,23 @@ function importRosterFile(file){
       if(iName<0){skipped+=rows.length-1;continue;}
       const iTeam=pickHeader(rows,["联队编号","编号","联队","排","队","id"]);
       const iSid=pickHeader(rows,["学号","student","sid"]);
+      const iSex=pickHeader(rows,["性别","sex","gender"]);
+      const iMajor=pickHeader(rows,["专业","major","学院"]);
+      const iBldg=pickHeader(rows,["楼栋","宿舍楼","bldg"]);
+      const iRoom=pickHeader(rows,["房间","寝室号","宿舍号","room"]);
+      const iNote=pickHeader(rows,["备注","note","说明"]);
       const mkSid=row=>{if(iSid>=0&&String(row[iSid]??"").trim())return {sid:String(row[iSid]).trim()};return {};};
+      const mkMeta=row=>{const o={};const put=(v,k)=>{const t=String(v??"").trim();if(t)o[k]=t;};
+        if(iSex>=0)put(row[iSex],"sex");if(iMajor>=0)put(row[iMajor],"major");
+        if(iBldg>=0)put(row[iBldg],"bldg");if(iRoom>=0)put(row[iRoom],"room");
+        if(iNote>=0)put(row[iNote],"note");return o;};
       const rowsOf=ref=>{
         const arr=[];
         for(let r=1;r<rows.length;r++){
           const row=rows[r];if(!row.length)continue;
           const nm=String(row[iName]??"").trim();
           if(!nm)continue;
-          arr.push({name:nm,...mkSid(row)});
+          arr.push({name:nm,...mkSid(row),...mkMeta(row)});
           line++;
         }
         return arr;
@@ -1108,7 +1117,7 @@ function importRosterFile(file){
           const nm=String(row[iName]??"").trim();
           if(!nm)continue;
           if(!ref){skipped++;continue;}
-          (group[ref]=group[ref]||[]).push({name:nm,...mkSid(row)});line++;
+          (group[ref]=group[ref]||[]).push({name:nm,...mkSid(row),...mkMeta(row)});line++;
         }
         Object.entries(group).forEach(([ref,names])=>{
           const t=teams.find(x=>x.id===ref||x.name===ref||x.name.includes(ref));
@@ -2017,7 +2026,7 @@ function renderTmMembers(){
     const hasFd=p.fd&&p.fd.length;
     row.innerHTML="<div style='flex:1;min-width:150px'><div><b>"+esc(p.name)+"</b>"+(p.sid?"<span style='color:var(--sub);font-size:12px'> "+esc(p.sid)+"</span>":"")+
       (hasFd?"<span class='chip done' style='margin-left:6px;padding:0 8px'>📷 已登记</span>":"<span class='chip wait' style='margin-left:6px;padding:0 8px'>未登记人脸</span>")+"</div>"+
-      "<div style='font-size:12px;margin-top:2px'>人脸：<button class='tbtn small' style='padding:1px 8px' data-pid='"+p.pid+"' data-fact='"+(hasFd?"repl":"reg")+"'>"+(hasFd?"📷 换照":"📷 登记")+"</button>"+
+      "<div style='font-size:12px;margin-top:2px'>"+((p.sex||p.major||p.bldg||p.room||p.note)?"<span style='color:var(--sub);margin-right:8px'>📋 "+esc([p.sex,p.major,(p.bldg&&p.room)?p.bldg+"-"+p.room:(p.bldg||p.room||""),p.note].filter(x=>x&&String(x).trim()).join(" · "))+"</span>":"")+"人脸：<button class='tbtn small' style='padding:1px 8px' data-pid='"+p.pid+"' data-fact='"+(hasFd?"repl":"reg")+"'>"+(hasFd?"📷 换照":"📷 登记")+"</button>"+
       (hasFd?" <button class='tbtn small danger' style='padding:1px 8px' data-pid='"+p.pid+"' data-fact='delfd'>🗑 删脸</button>":"")+"</div></div>"+
       "<button class='tbtn small' data-pid='"+p.pid+"' data-act='mv' title='划归到其他联队'>⇄ 移</button>"+
       "<button class='tbtn small' data-pid='"+p.pid+"' data-act='ren'>改名</button>"+
